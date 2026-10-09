@@ -14,6 +14,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -149,8 +150,17 @@ fun HomeScreen(ctrl: HomeController, env: HomeEnv) {
             }
         }
         if (pageCount > 1) PageDots(pageCount, pager.currentPage, newsOn) { i -> scope.launch { pager.animateScrollToPage(i) } }
-        SearchPill(ctrl, style)
-        Dock(ctrl, env, layout.dock)
+        Column(Modifier.pointerInput(Unit) {
+            var total = 0f
+            detectVerticalDragGestures(
+                onDragStart = { total = 0f },
+                onVerticalDrag = { _, d -> total += d },
+                onDragEnd = { if (total < -60f) ctrl.drawerOpen = true }
+            )
+        }) {
+            SearchPill(ctrl, style)
+            Dock(ctrl, env, layout.dock)
+        }
     }
 }
 
@@ -173,8 +183,24 @@ private fun PageDots(count: Int, current: Int, newsOn: Boolean, onClick: (Int) -
 
 @Composable
 private fun SearchPill(ctrl: HomeController, s: NamaStyle) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) { SearchBox(ctrl, s) }
+        Spacer(Modifier.width(8.dp))
+        // Always-visible way into the app drawer (swiping up also works at the end of a page).
+        Box(
+            Modifier.size(40.dp).clip(CircleShape)
+                .background(if (s.textOnly) s.text.copy(alpha = 0.06f) else s.card)
+                .then(if (s.textOnly) Modifier else Modifier.border(1.dp, s.cardBorder, CircleShape))
+                .clickable { ctrl.drawerOpen = true },
+            contentAlignment = Alignment.Center
+        ) { Text("⋮⋮", color = s.text, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+    }
+}
+
+@Composable
+private fun SearchBox(ctrl: HomeController, s: NamaStyle) {
     Box(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).height(40.dp)
+        Modifier.fillMaxWidth().height(40.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(if (s.textOnly) s.text.copy(alpha = 0.06f) else s.card)
             .then(if (s.textOnly) Modifier else Modifier.border(1.dp, s.cardBorder, RoundedCornerShape(20.dp)))

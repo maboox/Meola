@@ -129,6 +129,7 @@ class CommandTest {
         assertTrue(toman.title.startsWith("۱۲۰٬۰۰۰"))
         val words = CommandParser.parse("250000").filterIsInstance<Command.Info>().first()
         assertEquals("دویست و پنجاه هزار", words.title)
+        assertTrue(CommandParser.parse("1405/7/17").none { it is Command.Calc })
         val date = CommandParser.parse("1405/7/17").filterIsInstance<Command.Info>().first()
         assertEquals("2026-10-09", date.copyText)
         val back = CommandParser.parse("2026-10-09").filterIsInstance<Command.Info>().first()

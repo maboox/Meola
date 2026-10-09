@@ -162,8 +162,9 @@ object CommandParser {
             out += Command.Ussd(norm)
         }
 
-        // Math
-        if (Calculator.looksLikeMath(en)) {
+        // Math (a date like 1405/7/17 is not a division)
+        val looksLikeDate = Regex("^$NUM{4}[/\\-.]$NUM{1,2}[/\\-.]$NUM{1,2}$").matches(norm)
+        if (!looksLikeDate && Calculator.looksLikeMath(en)) {
             Calculator.evaluate(en)?.let { out += Command.Calc(input, it) }
         }
 

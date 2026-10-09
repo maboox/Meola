@@ -249,7 +249,7 @@ fun MorningWidget(ctrl: HomeController, env: HomeEnv, w: WidgetInstance, pageInd
         FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             weather?.let { wt ->
                 val (icon, _) = ir.nama.launcher.data.WeatherRepo.describe(wt.code, Nama.isFa)
-                Fact("$icon " + num(Math.round(wt.tempC)) + "°" + (wt.aqi?.let { " · AQI " + num(it) } ?: ""))
+                Fact("$icon " + num(Math.round(wt.tempC)) + "°" + (wt.aqi?.let { tr(" · آلودگی ", " · AQI ") + num(it) } ?: ""))
             }
             val cutsToday = personal.blackouts.filter { it.epochDay == today.toEpochDay() || (it.epochDay == null && Jalali.weekIndex(today) in it.days) }
             cutsToday.firstOrNull()?.let { Fact("⚡ " + minuteText(it.startMinute) + "–" + minuteText(it.endMinute)) }

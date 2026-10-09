@@ -211,7 +211,7 @@ fun TodayWidget(ctrl: HomeController, env: HomeEnv, w: WidgetInstance, pageIndex
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             weather?.let { wt ->
                 val (icon, desc) = ir.nama.launcher.data.WeatherRepo.describe(wt.code, Nama.isFa)
-                Text("$icon ${num(Math.round(wt.tempC))}° $desc" + (wt.aqi?.let { tr(" · آلودگی ", " · AQI ") + num(it) } ?: ""), color = s.text, fontSize = 13.sp)
+                Text("$icon ${num(Math.round(wt.tempC))}° $desc" + (wt.aqi?.let { tr(" · آلودگی هوا ", " · AQI ") + num(it) } ?: ""), color = s.text, fontSize = 13.sp)
             }
             if (next != null) {
                 val t = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(next), java.time.ZoneId.systemDefault())

@@ -44,7 +44,7 @@ class EntryActivity : Activity() {
             !Nama.settings.onboarded -> OnboardingActivity::class.java
             else -> SettingsActivity::class.java
         }
-        startActivity(Intent(this, target))
+        startActivity(Intent(this, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
         finish()
     }
 }

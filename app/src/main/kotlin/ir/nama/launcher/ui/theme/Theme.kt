@@ -202,6 +202,14 @@ fun NamaAppTheme(dark: Boolean, rtl: Boolean, content: @Composable () -> Unit) {
         surface = Color.White, surfaceVariant = Color(0xFFEEF1EE), onPrimary = Color.White,
         surfaceContainer = Color(0xFFF2F4F2), surfaceContainerHigh = Color(0xFFECEFEC), surfaceContainerLow = Color(0xFFF6F7F5)
     )
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.SideEffect {
+        (view.context as? android.app.Activity)?.window?.let { w ->
+            val c = androidx.core.view.WindowCompat.getInsetsController(w, view)
+            c.isAppearanceLightStatusBars = !dark
+            c.isAppearanceLightNavigationBars = !dark
+        }
+    }
     MaterialTheme(colorScheme = scheme, typography = namaTypography()) {
         CompositionLocalProvider(
             LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,

@@ -56,9 +56,15 @@ adb shell input keyevent KEYCODE_HOME
 shot 07_home_after_home_key 4
 
 # --- Drawer, search, news, menus ---------------------------------------------------------------
-adb shell input swipe $((W/2)) $((H*85/100)) $((W/2)) $((H*20/100)) 250
+tap_text "⋮⋮"
 shot 08_drawer 3
+# Long press the first app in the drawer: app menu.
+adb shell input swipe $((W*85/100)) $((H*30/100)) $((W*85/100)) $((H*30/100)) 1200
+shot 08b_app_menu 2
 adb shell input keyevent KEYCODE_BACK
+adb shell input keyevent KEYCODE_BACK
+adb shell input keyevent KEYCODE_HOME
+sleep 1
 tap_text "جستجو یا فرمان"; sleep 2
 adb shell input text "1405/7/17"; shot 09_search_date 3
 adb shell input keyevent KEYCODE_BACK; adb shell input keyevent KEYCODE_BACK
@@ -69,6 +75,8 @@ adb shell input swipe $((W*15/100)) $((H/2)) $((W*85/100)) $((H/2)) 300
 shot 11_swipe_right 4
 adb shell input swipe $((W*85/100)) $((H/2)) $((W*15/100)) $((H/2)) 300
 shot 12_swipe_left 3
+adb shell input swipe $((W*85/100)) $((H/2)) $((W*15/100)) $((H/2)) 300
+shot 12b_news 4
 adb shell input keyevent KEYCODE_HOME
 sleep 2
 adb shell input swipe $((W*85/100)) $((H/2)) $((W*15/100)) $((H/2)) 300
