@@ -50,6 +50,27 @@ tap_text "ادامه"; shot 05_setup_places
 tap_text "فعلاً فقط امتحانش کنم"
 shot 06_home_first 10
 
+# Drag-and-drop: drop the first app (rightmost in RTL) onto its neighbour to make a folder.
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
+read X1 Y1 X2 Y2 < <(python3 - <<'PY'
+import re
+xml = open('/tmp/ui.xml', encoding='utf-8').read()
+labels = []
+for t,a,b,c,d in re.findall(r'text="([^"]+)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml):
+    a,b,c,d = map(int,(a,b,c,d))
+    if 900 < b < 1900 and (c-a) < 300 and len(t) < 14:
+        labels.append((b, -a, (a+c)//2, b - 70))
+labels.sort()
+if len(labels) >= 2:
+    print(labels[0][2], labels[0][3], labels[1][2], labels[1][3])
+PY
+)
+if [ -n "${X2:-}" ]; then
+  shot 06b_before_drag 1
+  adb shell input draganddrop $X1 $Y1 $X2 $Y2 1500 2>/dev/null || adb shell input swipe $X1 $Y1 $X2 $Y2 2000
+  shot 06c_after_drag 3
+fi
+
 # Make Nama the home app on the emulator so the home button returns to it.
 adb shell cmd role add-role-holder android.app.role.HOME $PKG 2>/dev/null || adb shell cmd package set-home-activity $PKG/.ui.MainActivity
 adb shell input keyevent KEYCODE_HOME
