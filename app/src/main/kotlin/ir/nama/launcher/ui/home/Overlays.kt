@@ -369,6 +369,8 @@ private fun buildResults(ctrl: HomeController, env: HomeEnv, query: String, ctx:
     if (q.isEmpty()) return emptyList()
     val out = mutableListOf<Result>()
     val fa = Nama.isFa
+    // Kids and guest spaces: only allowed apps and harmless answers, nothing that leaves the space.
+    val restricted = Nama.isRestricted(env.space) || env.space?.overrides?.locked == true
 
     // 1) Commands
     for (c in CommandParser.parse(q)) {
@@ -412,7 +414,7 @@ private fun buildResults(ctrl: HomeController, env: HomeEnv, query: String, ctx:
 
     // 2) Apps
     val apps = env.apps.values.asSequence()
-        .filter { env.visible(it) || it.pref.archived }
+        .filter { env.visible(it) || (it.pref.archived && !restricted) }
         .filter { !Friction.has(it.pref.friction, Friction.HIDE_FROM_SEARCH) && !it.pref.hidden }
         .map { it to SearchScorer.score(q, it.search) }
         .filter { it.second > 0 }
@@ -429,6 +431,8 @@ private fun buildResults(ctrl: HomeController, env: HomeEnv, query: String, ctx:
             }
         }
     }
+
+    if (restricted) return out.filter { it.app != null || it.icon == "=" || it.icon == "ℹ" }
 
     // 3) Contacts
     if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED && q.length >= 2) {

@@ -747,7 +747,9 @@ fun GateDialog(ctrl: HomeController, req: GateRequest) {
     var reason by remember { mutableStateOf<String?>(null) }
     val sentence = tr("من آگاهانه ${e.label} را باز می‌کنم", "I am opening ${e.label} on purpose")
     var typed by remember { mutableStateOf("") }
-    val ready = left == 0 && (!askOn || (reason != null && reason != "habit")) && (!typeOn || typed.trim() == sentence)
+    // Compare normalized text so a missing half-space or Arabic ي/ك never blocks the owner.
+    val typedOk = ir.nama.core.PersianText.normalize(typed).replace(" ", "") == ir.nama.core.PersianText.normalize(sentence).replace(" ", "")
+    val ready = left == 0 && (!askOn || (reason != null && reason != "habit")) && (!typeOn || typedOk)
     AlertDialog(
         onDismissRequest = { ctrl.gate = null },
         title = { Text(e.label) },

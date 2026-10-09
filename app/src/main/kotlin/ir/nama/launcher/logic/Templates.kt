@@ -139,8 +139,11 @@ object Templates {
     fun initialLayout(apps: List<AppEntry>, persona: String?, interests: Set<String>, style: StyleId): HomeLayout {
         val dock = defaultDock()
         val fav = pickFavorites(apps, dock).take(if (style == StyleId.MINIMAL) 6 else 8)
-        val page1 = HomePage(id(), widgetsFor(persona, interests, style), fav.map { HomeItem.App(id(), it) })
-        val base = HomeLayout(listOf(page1, HomePage(id(), secondPageWidgets(interests))), dock)
+        // Page 1 keeps a few widgets so the favorite apps stay visible without scrolling.
+        val all = widgetsFor(persona, interests, style)
+        val page1 = HomePage(id(), all.take(3), fav.map { HomeItem.App(id(), it) })
+        val page2Widgets = (all.drop(3) + secondPageWidgets(interests)).distinctBy { it.type }
+        val base = HomeLayout(listOf(page1, HomePage(id(), page2Widgets)), dock)
         val r = SmartSort.plan(base, apps, emptyMap())
         // The second page keeps its tool widgets in front of the folders.
         return r.layout.copy(pages = r.layout.pages.mapIndexed { i, p ->

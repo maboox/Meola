@@ -298,7 +298,9 @@ private fun HomeRoot(ctrl: HomeController, pickSystemWidget: (AppWidgetProviderI
                     BottomOverlay(ctrl.drawerOpen, env.reduceMotion) { AppDrawer(ctrl, env) }
                     BottomOverlay(ctrl.searchOpen, env.reduceMotion) { SearchOverlay(ctrl, env) }
 
-                    ctrl.appMenu?.let { AppMenuSheet(ctrl, env, it) }
+                    // App menus (hide, uninstall, settings…) are not offered inside kids/guest spaces.
+                    val lockedSpace = Nama.isRestricted(space) || space?.overrides?.locked == true
+                    ctrl.appMenu?.let { if (lockedSpace) ctrl.appMenu = null else AppMenuSheet(ctrl, env, it) }
                     ctrl.openFolder?.let { FolderDialog(ctrl, env, it) }
                     ctrl.homeMenuPage?.let { HomeMenuSheet(ctrl, it) }
                     ctrl.widgetPickerPage?.let { page -> WidgetPickerSheet(ctrl, page) { info -> pickSystemWidget(info, page) } }

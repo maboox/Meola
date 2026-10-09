@@ -301,7 +301,8 @@ private fun HomePageView(ctrl: HomeController, env: HomeEnv, page: HomePage, pag
                 detectTapGestures(
                     onLongPress = { pos ->
                         val c = coords ?: return@detectTapGestures
-                        if (!registry.hits(c.localToWindow(pos)) && !Nama.isRestricted(envNow.space)) {
+                        val locked = Nama.isRestricted(envNow.space) || envNow.space?.overrides?.locked == true
+                        if (!registry.hits(c.localToWindow(pos)) && !locked) {
                             view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                             ctrl.homeMenuPage = pageIndex
                         }
@@ -365,6 +366,9 @@ fun folderKeys(f: HomeItem.Folder, env: HomeEnv): List<String> {
 
 fun runGesture(ctrl: HomeController, a: GestureAction, view: android.view.View) {
     val ctx = ctrl.activity
+    val space = Nama.spaces.active.value
+    val locked = Nama.isRestricted(space) || space?.overrides?.locked == true
+    if (locked && (a == GestureAction.SETTINGS || a == GestureAction.EDIT_HOME)) return
     when (a) {
         GestureAction.NONE -> {}
         GestureAction.DRAWER -> ctrl.drawerOpen = true
