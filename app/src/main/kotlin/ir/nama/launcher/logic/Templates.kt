@@ -172,8 +172,10 @@ object Templates {
             apps.filter { it.category == c && it.key !in dock && !it.isSystem }.take(if (c == AppCategory.MESSAGING) 2 else 1)
                 .forEach { out += it.key }
         }
-        // Fill with any user app if the phone has few known apps.
-        apps.filter { !it.isSystem && it.key !in dock && it.key !in out }.take(8).forEach { if (out.size < 8) out += it.key }
+        // Fill up with other apps (user apps first, then useful system apps like Maps or Gallery).
+        val rest = apps.filter { it.key !in dock && it.key !in out && it.category != AppCategory.SYSTEM }
+            .sortedBy { if (it.isSystem) 1 else 0 }
+        for (e in rest) { if (out.size >= 8) break; out += e.key }
         return out
     }
 

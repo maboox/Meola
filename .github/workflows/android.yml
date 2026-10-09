@@ -53,6 +53,8 @@ jobs:
         run: |
           mkdir -p out
           cp app/build/outputs/apk/release/app-release.apk "out/Nama-1.0.${{ github.run_number }}.apk"
+          mkdir -p release
+          cp app/build/outputs/apk/release/app-release.apk release/Nama.apk
           ls -la out
 
       - uses: actions/upload-artifact@v4
@@ -70,9 +72,9 @@ jobs:
           make_latest: false
           target_commitish: ${{ github.sha }}
           body: |
-            آخرین نسخه ساخته‌شده از شاخه `${{ github.ref_name }}` (commit ${{ github.sha }}).
+            آخرین نسخه ساخته‌شده از شاخه `${{ github.ref_name }}` (ساخت شماره ${{ github.run_number }}، commit ${{ github.sha }}).
             فایل APK را روی گوشی دانلود و نصب کنید. نصب، نما را لانچر پیش‌فرض نمی‌کند؛ هر وقت خواستید از تنظیمات گوشی به لانچر قبلی برگردید.
-          files: out/*.apk
+          files: release/Nama.apk
 
   emulator-smoke-test:
     needs: build
