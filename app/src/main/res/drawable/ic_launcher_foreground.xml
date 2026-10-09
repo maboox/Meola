@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- An arch (Persian iwan) with an eight-point star: the Nama mark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#5FD0C6"
+        android:pathData="M34,78 L34,52 C34,38 44,29 54,26 C64,29 74,38 74,52 L74,78 Z" />
+    <path
+        android:fillColor="#10224A"
+        android:pathData="M41,78 L41,54 C41,45 47,39 54,36 C61,39 67,45 67,54 L67,78 Z" />
+    <path
+        android:fillColor="#F1D48F"
+        android:pathData="M54,45 L56.3,51.2 L62.5,50.5 L58.4,55.3 L62.5,60.1 L56.3,59.4 L54,65.6 L51.7,59.4 L45.5,60.1 L49.6,55.3 L45.5,50.5 L51.7,51.2 Z" />
+</vector>

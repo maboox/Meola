@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "message": null,
+  "newsSources": [
+    {"id": "isna", "name": "ایسنا", "url": "https://www.isna.ir/rss", "category": "GENERAL", "type": "rss", "enabledByDefault": true},
+    {"id": "khabaronline", "name": "خبرآنلاین", "url": "https://www.khabaronline.ir/rss", "category": "GENERAL", "type": "rss", "enabledByDefault": true},
+    {"id": "mehr", "name": "مهر", "url": "https://www.mehrnews.com/rss", "category": "GENERAL", "type": "rss"},
+    {"id": "tabnak", "name": "تابناک", "url": "https://www.tabnak.ir/fa/rss/allnews", "category": "POLITICS", "type": "rss"},
+    {"id": "asriran", "name": "عصر ایران", "url": "https://www.asriran.com/fa/rss/allnews", "category": "POLITICS", "type": "rss"},
+    {"id": "bbcpersian", "name": "بی‌بی‌سی فارسی", "url": "https://feeds.bbci.co.uk/persian/rss.xml", "category": "POLITICS", "type": "rss"},
+    {"id": "zoomit", "name": "زومیت", "url": "https://www.zoomit.ir/feed/", "category": "TECH", "type": "rss", "enabledByDefault": true},
+    {"id": "digiato", "name": "دیجیاتو", "url": "https://digiato.com/feed", "category": "TECH", "type": "rss"},
+    {"id": "arzdigital", "name": "ارز دیجیتال", "url": "https://arzdigital.com/feed/", "category": "CRYPTO", "type": "rss"},
+    {"id": "eghtesadnews", "name": "اقتصاد نیوز", "url": "https://www.eghtesadnews.com/fa/rss/allnews", "category": "ECONOMY", "type": "rss"},
+    {"id": "varzesh3", "name": "ورزش سه", "url": "https://www.varzesh3.com/rss/all", "category": "SPORTS", "type": "rss"},
+    {"id": "digikalamag", "name": "دیجی‌کالا مگ", "url": "https://www.digikala.com/mag/feed/", "category": "SCIENCE", "type": "rss"},
+    {"id": "bigbang", "name": "بیگ‌بنگ", "url": "https://bigbangpage.com/feed/", "category": "SCIENCE", "type": "rss"}
+  ],
+  "priceSources": [
+    {"symbol": "USDT", "title": "دلار (تتر)", "url": "https://api.nobitex.ir/market/stats?srcCurrency=usdt,btc,eth&dstCurrency=rls", "valuePath": "stats.usdt-rls.latest", "changePath": "stats.usdt-rls.dayChange", "divisor": 10.0, "unit": "تومان"},
+    {"symbol": "BTC", "title": "بیت‌کوین", "url": "https://api.nobitex.ir/market/stats?srcCurrency=btc,eth&dstCurrency=usdt", "valuePath": "stats.btc-usdt.latest", "changePath": "stats.btc-usdt.dayChange", "divisor": 1.0, "unit": "دلار"},
+    {"symbol": "ETH", "title": "اتریوم", "url": "https://api.nobitex.ir/market/stats?srcCurrency=btc,eth&dstCurrency=usdt", "valuePath": "stats.eth-usdt.latest", "changePath": "stats.eth-usdt.dayChange", "divisor": 1.0, "unit": "دلار"},
+    {"symbol": "BTC_IRT", "title": "بیت‌کوین به تومان", "url": "https://api.nobitex.ir/market/stats?srcCurrency=usdt,btc,eth&dstCurrency=rls", "valuePath": "stats.btc-rls.latest", "changePath": "stats.btc-rls.dayChange", "divisor": 10.0, "unit": "تومان"}
+  ],
+  "ussd": [
+    {"operator": "همراه اول", "title": "موجودی و اعتبار", "code": "*140*11#"},
+    {"operator": "همراه اول", "title": "خرید بسته اینترنت", "code": "*100#"},
+    {"operator": "ایرانسل", "title": "موجودی و اعتبار", "code": "*141*1#"},
+    {"operator": "ایرانسل", "title": "خرید بسته اینترنت", "code": "*555#"},
+    {"operator": "رایتل", "title": "موجودی و اعتبار", "code": "*140#"}
+  ],
+  "oddEven": {"evenDays": [0, 2, 4], "oddDays": [1, 3], "startMinute": 390, "endMinute": 1140},
+  "categoryOverrides": {},
+  "domesticPackages": [],
+  "foreignPackages": [],
+  "intlProbeUrls": ["https://www.cloudflare.com/cdn-cgi/trace", "https://www.gstatic.com/generate_204"],
+  "domesticProbeUrls": ["https://www.aparat.com/", "https://www.digikala.com/"]
+}

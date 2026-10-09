@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">نما</string>
+    <string name="settings">تنظیمات نما</string>
+    <string name="safe_mode">حالت امن نما</string>
+    <string name="lock_service_label">نما: قفل صفحه با دو ضربه</string>
+    <string name="lock_service_description">نما از این دسترسی فقط برای قفل کردن صفحه با دو ضربه و باز کردن پنل اعلان‌ها استفاده می‌کند. هیچ محتوایی از صفحه یا برنامه‌های دیگر خوانده یا ذخیره نمی‌شود.</string>
+    <string name="dream_label">ساعت فارسی نما</string>
+</resources>
