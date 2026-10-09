@@ -13,13 +13,16 @@ import ir.nama.core.Trigger
 import ir.nama.launcher.Nama
 import ir.nama.launcher.context.SpaceManager
 import ir.nama.launcher.data.AppEntry
-import ir.nama.launcher.data.HomeItem
+import ir.nama.core.GridMath
+import ir.nama.launcher.data.FolderData
+import ir.nama.launcher.data.GridItem
 import ir.nama.launcher.data.HomeLayout
 import ir.nama.launcher.data.HomePage
 import ir.nama.launcher.data.WidgetInstance
-import ir.nama.launcher.data.WidgetSize
 import ir.nama.launcher.data.WidgetType
 import ir.nama.launcher.tr
+import ir.nama.launcher.ui.widgets.WSize
+import ir.nama.launcher.ui.widgets.WidgetCatalog
 import java.util.UUID
 
 private fun id() = UUID.randomUUID().toString().take(10)
@@ -28,10 +31,11 @@ object SmartSort {
     data class Result(val layout: HomeLayout, val folders: Int, val apps: Int, val prefChanges: Map<String, (ir.nama.launcher.data.AppPref) -> ir.nama.launcher.data.AppPref>)
 
     /**
-     * Rebuilds pages 2+ as folders by rule/category. Page 1 keeps its widgets and loose apps
-     * (the user's favorites); the dock is untouched. Nothing is uninstalled or hidden unless a rule says so.
+     * Rebuilds pages 2+ as folders by rule/category. Page 1 (the user's favorites and widgets) and the
+     * dock are untouched, and widgets on later pages keep their place. Nothing is uninstalled; apps
+     * are hidden or archived only when one of the user's rules says so.
      */
-    fun plan(current: HomeLayout, apps: List<AppEntry>, lastUsed: Map<String, Long>): Result {
+    fun plan(current: HomeLayout, apps: List<AppEntry>, lastUsed: Map<String, Long>, cols: Int = 4, rows: Int = 6): Result {
         val now = System.currentTimeMillis()
         val rules = Nama.store.rules.value
         val prefChanges = mutableMapOf<String, (ir.nama.launcher.data.AppPref) -> ir.nama.launcher.data.AppPref>()
@@ -56,72 +60,40 @@ object SmartSort {
             usable += e
         }
         val first = current.pages.firstOrNull() ?: HomePage(id())
-        val favorites = first.items.filterIsInstance<HomeItem.App>().map { it.key }.toSet()
-        val keep = favorites + current.dock
+        val onFirst = first.items.flatMap { listOfNotNull(it.app) + (it.folder?.keys ?: emptyList()) }.toSet()
+        val keep = onFirst + current.dock
         val groups = usable.filter { it.key !in keep }.groupBy { folderOf[it.key]!! }
         val stats = Nama.store.appStats.value
-        val folders = mutableListOf<HomeItem>()
+        val tiles = mutableListOf<GridItem>()
         val singles = mutableListOf<String>()
         groups.entries.sortedByDescending { it.value.size }.forEach { (name, list) ->
             val keys = list.sortedByDescending { stats[it.key]?.launches ?: 0 }.map { it.key }
-            if (keys.size >= 2) folders += HomeItem.Folder(id(), name, keys) else singles += keys
+            if (keys.size >= 2) tiles += GridItem(id(), 0, 0, folder = FolderData(name, keys)) else singles += keys
         }
-        if (singles.size >= 2) folders += HomeItem.Folder(id(), tr("سایر", "Other"), singles)
-        else singles.forEach { folders += HomeItem.App(id(), it) }
+        if (singles.size >= 2) tiles += GridItem(id(), 0, 0, folder = FolderData(tr("سایر", "Other"), singles))
+        else singles.forEach { tiles += GridItem(id(), 0, 0, app = it) }
 
-        val newPages = mutableListOf(first.copy(items = first.items.filter { it is HomeItem.App }))
-        folders.chunked(20).forEachIndexed { i, chunk ->
-            val old = current.pages.getOrNull(i + 1)
-            newPages += HomePage(old?.id ?: id(), widgets = old?.widgets ?: emptyList(), items = chunk)
+        // Later pages keep only their widgets; folders fill the free cells around them.
+        val later = current.pages.drop(1).map { p -> p.copy(items = p.items.filter { it.isWidget }) }.toMutableList()
+        val queue = ArrayDeque(tiles)
+        var pi = 0
+        while (queue.isNotEmpty()) {
+            if (pi >= later.size) later += HomePage(id())
+            val page = later[pi]
+            val placed = page.items.toMutableList()
+            while (queue.isNotEmpty()) {
+                val spot = GridMath.findFree(placed.map { it.cell() }, 1, 1, cols, rows) ?: break
+                placed += queue.removeFirst().copy(x = spot.first, y = spot.second)
+            }
+            later[pi] = page.copy(items = placed)
+            pi++
         }
-        // Keep widgets that lived on pages beyond the new page count.
-        val extraWidgets = current.pages.drop(newPages.size).flatMap { it.widgets }
-        if (extraWidgets.isNotEmpty()) newPages[newPages.lastIndex] = newPages.last().let { it.copy(widgets = it.widgets + extraWidgets) }
-        return Result(current.copy(pages = newPages), folders.count { it is HomeItem.Folder }, usable.size, prefChanges)
+        val pages = listOf(first) + later.filter { it.items.isNotEmpty() }
+        return Result(current.copy(pages = pages), tiles.count { it.isFolder }, usable.size, prefChanges)
     }
 }
 
 object Templates {
-    fun widget(type: WidgetType, size: WidgetSize = type.defaultSize, config: Map<String, String> = emptyMap(), spaces: Set<String> = emptySet()) =
-        WidgetInstance(id(), type, size, config, spaces = spaces)
-
-    /** Widgets for page 1 from the persona and interests. */
-    fun widgetsFor(persona: String?, interests: Set<String>, style: StyleId): List<WidgetInstance> {
-        val w = mutableListOf<WidgetInstance>()
-        w += widget(if (style == StyleId.MINIMAL) WidgetType.CLOCK_WORDS else WidgetType.CLOCK)
-        w += widget(WidgetType.MORNING)
-        when (persona) {
-            "student" -> { w += widget(WidgetType.TODO); w += widget(WidgetType.POMODORO); w += widget(WidgetType.COUNTDOWN) }
-            "employee" -> { w += widget(WidgetType.TODAY); w += widget(WidgetType.TODO) }
-            "developer" -> { w += widget(WidgetType.TODAY); w += widget(WidgetType.POMODORO); w += widget(WidgetType.USAGE) }
-            "trader" -> { w += widget(WidgetType.PRICES); w += widget(WidgetType.NEWS_TICKER) }
-            "driver" -> { w += widget(WidgetType.ODD_EVEN); w += widget(WidgetType.WEATHER); w += widget(WidgetType.MUSIC) }
-            "business" -> { w += widget(WidgetType.BILLS); w += widget(WidgetType.EXPENSES); w += widget(WidgetType.BANK_CARDS) }
-            "homemaker" -> { w += widget(WidgetType.SHOPPING); w += widget(WidgetType.BIRTHDAYS) }
-            "retired" -> { w += widget(WidgetType.CONTACTS); w += widget(WidgetType.PRAYER) }
-            else -> w += widget(WidgetType.TODAY)
-        }
-        if ("poetry" in interests || "books" in interests) w += widget(WidgetType.HAFEZ)
-        if (("economy" in interests || "crypto" in interests) && w.none { it.type == WidgetType.PRICES }) w += widget(WidgetType.PRICES)
-        if ("religion" in interests && w.none { it.type == WidgetType.PRAYER }) w += widget(WidgetType.PRAYER)
-        if ("football" in interests || "sports" in interests) w += widget(WidgetType.FOOTBALL)
-        if ("health" in interests) w += widget(WidgetType.HABITS)
-        if (w.none { it.type == WidgetType.WEATHER }) w += widget(WidgetType.WEATHER)
-        if (w.none { it.type == WidgetType.CALENDAR } && style == StyleId.DASHBOARD) w += widget(WidgetType.CALENDAR, WidgetSize.SMALL)
-        // Pair small widgets nicely.
-        return w.distinctBy { it.type }
-    }
-
-    /** Page 2 widgets: tools that are useful but not needed at first glance. */
-    fun secondPageWidgets(interests: Set<String>): List<WidgetInstance> {
-        val w = mutableListOf(
-            widget(WidgetType.CALENDAR), widget(WidgetType.USSD), widget(WidgetType.BATTERY), widget(WidgetType.DATA_USAGE),
-            widget(WidgetType.BLACKOUT)
-        )
-        if ("news" in interests || "tech" in interests) w += widget(WidgetType.NEWS_DIGEST)
-        return w
-    }
-
     fun newsSourcesFor(interests: Set<String>, persona: String?): Set<String> {
         val cats = mutableSetOf(NewsCategory.GENERAL)
         if ("tech" in interests || persona == "developer") cats += NewsCategory.TECH
@@ -135,20 +107,43 @@ object Templates {
         return picked.map { it.id }.toSet()
     }
 
-    /** Builds the first layout: favorites and widgets on page 1, folders by category after that. */
-    fun initialLayout(apps: List<AppEntry>, persona: String?, interests: Set<String>, style: StyleId): HomeLayout {
+    /**
+     * The first layout, kept deliberately simple: page 1 has the at-a-glance date/time strip, one
+     * widget picked from the persona, and one row of favorite apps at the bottom (like a stock Android
+     * home). Everything else goes into category folders on page 2.
+     */
+    fun initialLayout(apps: List<AppEntry>, persona: String?, interests: Set<String>, @Suppress("UNUSED_PARAMETER") style: StyleId, cols: Int = 4, rows: Int = 6): HomeLayout {
         val dock = defaultDock()
-        val fav = pickFavorites(apps, dock).take(if (style == StyleId.MINIMAL) 6 else 8)
-        // Page 1 keeps a few widgets so the favorite apps stay visible without scrolling.
-        val all = widgetsFor(persona, interests, style)
-        val page1 = HomePage(id(), all.take(3), fav.map { HomeItem.App(id(), it) })
-        val page2Widgets = (all.drop(3) + secondPageWidgets(interests)).distinctBy { it.type }
-        val base = HomeLayout(listOf(page1, HomePage(id(), page2Widgets)), dock)
-        val r = SmartSort.plan(base, apps, emptyMap())
-        // The second page keeps its tool widgets in front of the folders.
-        return r.layout.copy(pages = r.layout.pages.mapIndexed { i, p ->
-            if (i == 1) p.copy(widgets = base.pages[1].widgets) else p
-        })
+        val fav = pickFavorites(apps, dock).take(cols)
+        val items = mutableListOf<GridItem>()
+        items += GridItem(id(), 0, 0, cols, 2, widget = WidgetInstance(id(), WidgetType.GLANCE))
+        val feature = featureWidget(persona, interests)
+        val favRows = (fav.size + cols - 1) / cols
+        if (feature != null && rows - 2 - favRows >= 2) {
+            val size = WidgetCatalog.defaultSize(feature).let { WSize(it.w.coerceAtMost(cols), it.h.coerceAtMost(2)) }
+            items += GridItem(id(), 0, 2, size.w, size.h, widget = WidgetInstance(id(), feature))
+        }
+        fav.forEachIndexed { i, k ->
+            val row = rows - favRows + i / cols
+            items += GridItem(id(), i % cols, row, app = k)
+        }
+        val base = HomeLayout(listOf(HomePage(id(), items)), dock)
+        return SmartSort.plan(base, apps, emptyMap(), cols, rows).layout
+    }
+
+    /** One widget that fits the person, shown on page 1. */
+    fun featureWidget(persona: String?, interests: Set<String>): WidgetType? = when {
+        persona == "trader" || "crypto" in interests || "economy" in interests -> WidgetType.PRICES
+        persona == "student" -> WidgetType.TODO
+        persona == "employee" || persona == "developer" -> WidgetType.TODAY
+        persona == "driver" -> WidgetType.WEATHER
+        persona == "business" -> WidgetType.BILLS
+        persona == "homemaker" -> WidgetType.SHOPPING
+        persona == "retired" -> WidgetType.CONTACTS
+        "poetry" in interests || "books" in interests -> WidgetType.HAFEZ
+        "religion" in interests -> WidgetType.PRAYER
+        "football" in interests || "sports" in interests -> WidgetType.FOOTBALL
+        else -> WidgetType.WEATHER
     }
 
     fun defaultDock(): List<String> {

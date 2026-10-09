@@ -18,11 +18,11 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,71 +31,79 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ir.nama.core.Friction
+import ir.nama.core.GridMath
 import ir.nama.core.Space
 import ir.nama.launcher.Nama
 import ir.nama.launcher.data.AppEntry
 import ir.nama.launcher.data.GestureAction
-import ir.nama.launcher.data.HomeItem
+import ir.nama.launcher.data.GridItem
 import ir.nama.launcher.data.HomePage
+import ir.nama.launcher.data.IconMode
 import ir.nama.launcher.data.IconShape
 import ir.nama.launcher.data.NetState
-import ir.nama.launcher.data.NotificationRepo
 import ir.nama.launcher.data.Settings
-import ir.nama.launcher.data.WidgetSize
-import ir.nama.launcher.num
 import ir.nama.launcher.system.Actions
 import ir.nama.launcher.tr
 import ir.nama.launcher.ui.common.AppIconImage
 import ir.nama.launcher.ui.theme.LocalNamaStyle
 import ir.nama.launcher.ui.theme.NamaStyle
-import ir.nama.launcher.ui.theme.Styles
-import ir.nama.launcher.ui.widgets.WidgetHost
+import ir.nama.launcher.ui.theme.wallpaperText
+import ir.nama.launcher.ui.widgets.WScope
+import ir.nama.launcher.ui.widgets.WSize
+import ir.nama.launcher.ui.widgets.WidgetContent
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** Everything the home screen needs to draw one frame, gathered once at the root. */
@@ -107,262 +115,427 @@ data class HomeEnv(
     val usage: Map<String, Long>,
     val net: NetState,
     val shape: IconShape,
-    val reduceMotion: Boolean
+    val reduceMotion: Boolean,
+    val iconMode: IconMode
 ) {
     fun visible(e: AppEntry) = Nama.isVisible(e, space)
     fun dim(e: AppEntry) = settings.nationalNetMode && net == NetState.NATIONAL_ONLY && e.foreign
     fun gray(e: AppEntry): Boolean {
         val limit = e.pref.dailyLimitMinutes
-        return limit > 0 && ir.nama.core.Friction.has(e.pref.friction, ir.nama.core.Friction.GRAYSCALE_AFTER_LIMIT) &&
-            (usage[e.packageName] ?: 0L) >= limit * 60_000L
+        return limit > 0 && Friction.has(e.pref.friction, Friction.GRAYSCALE_AFTER_LIMIT) && (usage[e.packageName] ?: 0L) >= limit * 60_000L
     }
     fun dot(e: AppEntry) = settings.showNotificationDots && (counts[e.packageName] ?: 0) > 0
+    val locked get() = Nama.isRestricted(space) || space?.overrides?.locked == true
+
+    /** Whether a grid item is shown in the current space. */
+    fun itemVisible(i: GridItem): Boolean = when {
+        i.app != null -> apps[i.app]?.let { visible(it) } == true
+        i.folder != null -> folderKeys(i, this).isNotEmpty() || i.folder.smartCategory != null
+        i.widget != null -> i.widget.spaces.isEmpty() || (space?.id ?: "base") in i.widget.spaces
+        else -> false
+    }
+}
+
+fun folderKeys(item: GridItem, env: HomeEnv): List<String> {
+    val f = item.folder ?: return emptyList()
+    val base = if (f.smartCategory != null) {
+        val stats = Nama.store.appStats.value
+        env.apps.values.filter { it.category == f.smartCategory }.sortedByDescending { stats[it.key]?.launches ?: 0 }.map { it.key }
+    } else f.keys
+    return base.filter { k -> env.apps[k]?.let { env.visible(it) } == true }
 }
 
 @Composable
 fun HomeScreen(ctrl: HomeController, env: HomeEnv) {
+    if (Nama.isRestricted(env.space)) {
+        RestrictedHome(ctrl, env)
+        return
+    }
     val layout by Nama.store.layout.flow.collectAsStateWithLifecycle()
-    val style = LocalNamaStyle.current
-    val newsOn = env.settings.newsPageEnabled && env.space?.overrides?.hideNews != true && !Nama.isRestricted(env.space)
+    val newsOn = env.settings.newsPageEnabled && env.space?.overrides?.hideNews != true
     val offset = if (newsOn) 1 else 0
     val pageCount = layout.pages.size + offset
     val pager = rememberPagerState(initialPage = offset) { pageCount }
     val scope = rememberCoroutineScope()
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val density = LocalDensity.current
+    var rootWidth by remember { mutableStateOf(0f) }
 
+    LaunchedEffect(pager, offset) {
+        snapshotFlow { pager.currentPage }.collect { ctrl.currentPage = it - offset }
+    }
     LaunchedEffect(Unit) {
-        ctrl.homePressed.collect {
-            if (pager.currentPage != offset) pager.animateScrollToPage(offset)
+        ctrl.homePressed.collect { if (pager.currentPage != offset) pager.animateScrollToPage(offset) }
+    }
+    // While dragging, holding an item at the screen edge flips to the next page (adding one if needed).
+    val dragging = ctrl.drag != null
+    LaunchedEffect(dragging) {
+        if (!dragging) return@LaunchedEffect
+        val edge = with(density) { 28.dp.toPx() }
+        var since = 0L
+        while (ctrl.drag != null) {
+            val d = ctrl.drag ?: break
+            val dir = when {
+                d.pointer.x < edge -> if (rtl) 1 else -1
+                rootWidth > 0 && d.pointer.x > rootWidth - edge -> if (rtl) -1 else 1
+                else -> 0
+            }
+            if (dir == 0) since = 0L
+            else if (since == 0L) since = System.currentTimeMillis()
+            else if (System.currentTimeMillis() - since > 550) {
+                val target = pager.currentPage + dir
+                if (target >= offset) {
+                    if (target >= pager.pageCount) { ctrl.addEmptyPage(); delay(60) }
+                    pager.animateScrollToPage(target.coerceAtMost(pager.pageCount - 1))
+                }
+                since = 0L
+                delay(450)
+            }
+            delay(40)
         }
     }
 
-    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-        HorizontalPager(
-            state = pager,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            beyondViewportPageCount = 1,
-            key = { i -> if (newsOn && i == 0) "news" else layout.pages.getOrNull(i - offset)?.id ?: "p$i" }
-        ) { index ->
-            if (newsOn && index == 0) {
-                NewsPage(ctrl, env)
-            } else {
-                val pi = index - offset
-                val page = layout.pages.getOrNull(pi)
-                if (page != null) HomePageView(ctrl, env, page, pi)
+    Box(Modifier.fillMaxSize().onGloballyPositioned { rootWidth = it.size.width.toFloat() }) {
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+            HorizontalPager(
+                state = pager,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                beyondViewportPageCount = 2,
+                userScrollEnabled = !dragging,
+                key = { i -> if (newsOn && i == 0) "news" else layout.pages.getOrNull(i - offset)?.id ?: "p$i" }
+            ) { index ->
+                if (newsOn && index == 0) NewsPage(ctrl, env)
+                else layout.pages.getOrNull(index - offset)?.let { GridPage(ctrl, env, it, index - offset) }
             }
-        }
-        if (pageCount > 1) PageDots(pageCount, pager.currentPage, newsOn) { i -> scope.launch { pager.animateScrollToPage(i) } }
-        Column(Modifier.pointerInput(Unit) {
-            var total = 0f
-            detectVerticalDragGestures(
-                onDragStart = { total = 0f },
-                onVerticalDrag = { _, d -> total += d },
-                onDragEnd = { if (total < -60f) ctrl.drawerOpen = true }
-            )
-        }) {
-            SearchPill(ctrl, style)
+            PageIndicator(pageCount, pager.currentPage, newsOn) { i -> scope.launch { pager.animateScrollToPage(i) } }
             Dock(ctrl, env, layout.dock)
+            SearchBar(ctrl)
         }
+        DragLayer(ctrl, env)
     }
 }
 
+// ------------------------------------------------------------------------------------------------
+// Page indicator, dock, search bar
+// ------------------------------------------------------------------------------------------------
+
 @Composable
-private fun PageDots(count: Int, current: Int, newsOn: Boolean, onClick: (Int) -> Unit) {
+private fun PageIndicator(count: Int, current: Int, newsOn: Boolean, onClick: (Int) -> Unit) {
     val s = LocalNamaStyle.current
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.Center) {
+    if (count <= 1) { Spacer(Modifier.height(10.dp)); return }
+    Row(Modifier.fillMaxWidth().height(18.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         repeat(count) { i ->
             val active = i == current
-            Box(
-                Modifier.padding(horizontal = 3.dp)
-                    .size(if (active) 8.dp else 6.dp)
-                    .clip(if (newsOn && i == 0) RoundedCornerShape(2.dp) else CircleShape)
-                    .background(if (active) s.accent else s.subText.copy(alpha = 0.45f))
-                    .clickable { onClick(i) }
-            )
+            if (newsOn && i == 0) {
+                Icon(Icons.Outlined.Article, tr("اخبار", "News"), tint = s.onWallpaper.copy(alpha = if (active) 1f else 0.55f), modifier = Modifier.padding(horizontal = 4.dp).size(12.dp).clickable { onClick(0) })
+            } else {
+                val w by animateFloatAsState(if (active) 16f else 6f, label = "dot")
+                Box(
+                    Modifier.padding(horizontal = 3.dp).height(6.dp).width(w.dp).clip(RoundedCornerShape(3.dp))
+                        .background(s.onWallpaper.copy(alpha = if (active) 0.95f else 0.45f)).clickable { onClick(i) }
+                )
+            }
         }
-    }
-}
-
-@Composable
-private fun SearchPill(ctrl: HomeController, s: NamaStyle) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f)) { SearchBox(ctrl, s) }
-        Spacer(Modifier.width(8.dp))
-        // Always-visible way into the app drawer (swiping up also works at the end of a page).
-        Box(
-            Modifier.size(40.dp).clip(CircleShape)
-                .background(if (s.textOnly) s.text.copy(alpha = 0.06f) else s.card)
-                .then(if (s.textOnly) Modifier else Modifier.border(1.dp, s.cardBorder, CircleShape))
-                .clickable { ctrl.drawerOpen = true },
-            contentAlignment = Alignment.Center
-        ) { Text("⋮⋮", color = s.text, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
-    }
-}
-
-@Composable
-private fun SearchBox(ctrl: HomeController, s: NamaStyle) {
-    Box(
-        Modifier.fillMaxWidth().height(40.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (s.textOnly) s.text.copy(alpha = 0.06f) else s.card)
-            .then(if (s.textOnly) Modifier else Modifier.border(1.dp, s.cardBorder, RoundedCornerShape(20.dp)))
-            .clickable { ctrl.openSearch() },
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            "⌕  " + tr("جستجو یا فرمان… «زنگ ۷»", "Search or command… \"alarm 7\""),
-            color = s.subText, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp)
-        )
     }
 }
 
 @Composable
 private fun Dock(ctrl: HomeController, env: HomeEnv, dock: List<String>) {
-    val s = LocalNamaStyle.current
-    val override = env.space?.overrides?.dockApps
-    val keys = (override ?: dock).mapNotNull { env.apps[it] }.filter { env.visible(it) }
-    if (keys.isEmpty()) {
-        Spacer(Modifier.height(8.dp))
-        return
-    }
     val view = LocalView.current
+    val keys = (env.space?.overrides?.dockApps ?: dock).mapNotNull { env.apps[it] }.filter { env.visible(it) }
+    if (keys.isEmpty()) return
+    val size = env.settings.iconSizeDp.coerceIn(44, 64).dp
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(26.dp))
-            .then(if (s.textOnly) Modifier else Modifier.background(s.card).border(1.dp, s.cardBorder, RoundedCornerShape(26.dp)))
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically
     ) {
         keys.forEach { e ->
-            if (s.textOnly) {
-                Text(
-                    e.label, color = s.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).combinedClickable(
-                        onClick = { ctrl.launch(e, view) },
-                        onLongClick = { ctrl.appMenu = AppMenuTarget(e, MenuSource.Dock) }
-                    ).padding(vertical = 8.dp),
-                    textAlign = TextAlign.Center
-                )
-            } else {
+            Box {
                 Box(
-                    Modifier.combinedClickable(
+                    Modifier.clip(CircleShape).combinedClickable(
                         onClick = { ctrl.launch(e, view) },
                         onLongClick = {
-                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                            ctrl.appMenu = AppMenuTarget(e, MenuSource.Dock)
+                            if (!env.locked) {
+                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                ctrl.dockMenu = e.key
+                            }
                         }
                     )
+                ) { AppIconImage(e, size, env.shape, dim = env.dim(e), grayscale = env.gray(e), dot = env.dot(e)) }
+                AppMenu(ctrl, env, e, expanded = ctrl.dockMenu == e.key, onDismiss = { ctrl.dockMenu = null }, inDock = true)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchBar(ctrl: HomeController) {
+    val s = LocalNamaStyle.current
+    val bg = if (s.minimal) Color(0xFF161616) else s.surfaceHigh.copy(alpha = 0.94f)
+    val fg = s.onSurfaceVariant
+    Row(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 10.dp).height(52.dp)
+            .clip(RoundedCornerShape(26.dp)).background(bg).clickable { ctrl.openSearch() }.padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Spacer(Modifier.width(12.dp))
+        Icon(Icons.Outlined.Search, null, tint = s.accent, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(tr("جستجو یا فرمان", "Search or command"), color = fg, fontSize = 15.sp, modifier = Modifier.weight(1f), maxLines = 1)
+        Box(
+            Modifier.size(40.dp).clip(CircleShape).clickable { ctrl.drawerOpen = true },
+            contentAlignment = Alignment.Center
+        ) { Icon(Icons.Outlined.Apps, tr("همه برنامه‌ها", "All apps"), tint = fg, modifier = Modifier.size(22.dp)) }
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The grid
+// ------------------------------------------------------------------------------------------------
+
+@Composable
+private fun GridPage(ctrl: HomeController, env: HomeEnv, page: HomePage, pageIndex: Int) {
+    val view = LocalView.current
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val cols = ctrl.cols
+    val rows = ctrl.rows
+    val envNow by rememberUpdatedState(env)
+    val pageNow by rememberUpdatedState(page)
+    BoxWithConstraints(Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 2.dp)) {
+        val cellW = maxWidth / cols
+        val cellH = maxHeight / rows
+        var origin by remember { mutableStateOf(Offset.Zero) }
+        val density = LocalDensity.current
+        Box(
+            Modifier.fillMaxSize()
+                .onGloballyPositioned { c ->
+                    val b = c.boundsInWindow()
+                    origin = Offset(b.left, b.top)
+                    ctrl.grids[pageIndex] = GridGeom(b, b.width / cols, b.height / rows, cols, rows, rtl)
+                }
+                .pointerInput(pageIndex, cols, rows) {
+                    detectTapGestures(
+                        onLongPress = { pos ->
+                            val g = ctrl.grids[pageIndex] ?: return@detectTapGestures
+                            val cell = g.cellAt(pos + origin) ?: return@detectTapGestures
+                            val occupied = GridMath.at(pageNow.items.filter { envNow.itemVisible(it) }.map { it.cell() }, cell.first, cell.second) != null
+                            if (!occupied && !envNow.locked) {
+                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                ctrl.homeMenuOpen = true
+                            }
+                        },
+                        onDoubleTap = { runGesture(ctrl, envNow.settings.doubleTapAction, view) }
+                    )
+                }
+                .pointerInput(Unit) {
+                    var total = 0f
+                    detectVerticalDragGestures(
+                        onDragStart = { total = 0f },
+                        onVerticalDrag = { _, d -> total += d },
+                        onDragEnd = {
+                            val th = 60.dp.toPx()
+                            if (total < -th) runGesture(ctrl, envNow.settings.swipeUpAction, view)
+                            else if (total > th) runGesture(ctrl, envNow.settings.swipeDownAction, view)
+                        }
+                    )
+                },
+            contentAlignment = AbsoluteAlignment.TopLeft
+        ) {
+            page.items.filter { env.itemVisible(it) }.forEach { item ->
+                val vx = if (rtl) cols - item.x - item.w else item.x
+                val xPx = with(density) { (cellW * vx).roundToPx() }
+                val yPx = with(density) { (cellH * item.y).roundToPx() }
+                Box(
+                    Modifier.absoluteOffset { IntOffset(xPx, yPx) }
+                        .size(cellW * item.w, cellH * item.h)
                 ) {
-                    AppIconImage(e, env.settings.iconSizeDp.dp, env.shape, dim = env.dim(e), grayscale = env.gray(e), dot = env.dot(e))
+                    GridItemView(ctrl, env, item, pageIndex, cellW * item.w, cellH * item.h)
                 }
             }
         }
     }
 }
 
-/** Collects the on-screen rectangles of items so empty-space gestures can tell them apart. */
-class HitRegistry {
-    val rects = mutableStateMapOf<String, Rect>()
-    fun hits(windowPos: Offset) = rects.values.any { it.contains(windowPos) }
+@Composable
+private fun GridItemView(ctrl: HomeController, env: HomeEnv, item: GridItem, pageIndex: Int, width: Dp, height: Dp) {
+    val view = LocalView.current
+    var topLeft by remember { mutableStateOf(Offset.Zero) }
+    var sizePx by remember { mutableStateOf(Size.Zero) }
+    val itemNow by rememberUpdatedState(item)
+    val envNow by rememberUpdatedState(env)
+    val beingDragged = ctrl.drag?.item?.id == item.id
+    val pressed = ctrl.itemMenu == (pageIndex to item.id)
+    val scale by animateFloatAsState(if (pressed) 1.04f else 1f, label = "press")
+    Box(
+        Modifier.fillMaxSize()
+            .onGloballyPositioned { topLeft = it.positionInWindow(); sizePx = Size(it.size.width.toFloat(), it.size.height.toFloat()) }
+            .alpha(if (beingDragged) 0f else 1f)
+            .scale(scale)
+            .pointerInput(item.id, pageIndex) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var cancelled = false
+                    val up = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                        waitForUpOrCancellation().also { if (it == null) cancelled = true }
+                    }
+                    val it0 = itemNow
+                    if (up != null) {
+                        if (!it0.isWidget) { up.consume(); onItemTap(ctrl, envNow, it0, pageIndex, view) }
+                        return@awaitEachGesture
+                    }
+                    if (cancelled || envNow.locked) return@awaitEachGesture
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    ctrl.itemMenu = pageIndex to it0.id
+                    var dragging = false
+                    val slop = viewConfiguration.touchSlop * 1.5f
+                    while (true) {
+                        val ev = awaitPointerEvent(PointerEventPass.Initial)
+                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                        ch.consume()
+                        if (!ch.pressed) break
+                        val window = topLeft + ch.position
+                        if (!dragging && (ch.position - down.position).getDistance() > slop) {
+                            dragging = true
+                            ctrl.itemMenu = null
+                            ctrl.drag = DragState(it0, pageIndex, window, down.position, sizePx)
+                        }
+                        if (dragging) ctrl.drag = ctrl.drag?.copy(pointer = window)
+                    }
+                    if (dragging) ctrl.drop()
+                }
+            }
+    ) {
+        ItemContent(ctrl, env, item, pageIndex, width, height)
+        when {
+            item.app != null -> env.apps[item.app]?.let { e ->
+                AppMenu(ctrl, env, e, expanded = pressed, onDismiss = { ctrl.itemMenu = null }, itemId = item.id)
+            }
+            item.folder != null -> FolderMenu(ctrl, item, expanded = pressed, onDismiss = { ctrl.itemMenu = null })
+            item.widget != null -> WidgetMenu(ctrl, item, expanded = pressed, onDismiss = { ctrl.itemMenu = null })
+        }
+    }
+}
+
+private fun onItemTap(ctrl: HomeController, env: HomeEnv, item: GridItem, pageIndex: Int, view: android.view.View) {
+    when {
+        item.app != null -> env.apps[item.app]?.let { ctrl.launch(it, view) }
+        item.folder != null -> ctrl.openFolder = FolderTarget(pageIndex, item.id)
+    }
+}
+
+/** Draws an item: app icon with label, folder, or widget. */
+@Composable
+fun ItemContent(ctrl: HomeController, env: HomeEnv, item: GridItem, pageIndex: Int, width: Dp, height: Dp) {
+    val s = LocalNamaStyle.current
+    val iconSize = env.settings.iconSizeDp.coerceIn(40, 72).dp.let { if (it > width - 8.dp) width - 8.dp else it }
+    when {
+        item.app != null -> {
+            val e = env.apps[item.app] ?: return
+            IconWithLabel(env, iconSize, if (e.pref.locked) "🔒 " + e.label else e.label) {
+                AppIconImage(e, iconSize, env.shape, grayscale = env.gray(e), dim = env.dim(e), dot = env.dot(e))
+            }
+        }
+        item.folder != null -> IconWithLabel(env, iconSize, item.folder.name) { FolderIcon(item, env, iconSize, s) }
+        item.widget != null -> Box(Modifier.fillMaxSize().padding(5.dp)) {
+            WidgetContent(WScope(ctrl, env, item.widget, item.id, WSize(item.w, item.h), (width - 10.dp).value, (height - 10.dp).value))
+        }
+    }
 }
 
 @Composable
-private fun HomePageView(ctrl: HomeController, env: HomeEnv, page: HomePage, pageIndex: Int) {
+private fun IconWithLabel(env: HomeEnv, iconSize: Dp, label: String, icon: @Composable () -> Unit) {
+    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        icon()
+        if (env.settings.showLabels) {
+            Text(
+                label, style = wallpaperText(12), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 5.dp, start = 4.dp, end = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun FolderIcon(item: GridItem, env: HomeEnv, size: Dp, s: NamaStyle) {
+    val keys = folderKeys(item, env).take(4)
+    val bg = if (s.minimal) Color(0xFF1C1C1C) else s.surfaceHigh.copy(alpha = 0.92f)
+    Box(Modifier.size(size).clip(CircleShape).background(bg), contentAlignment = Alignment.Center) {
+        val mini = size * 0.32f
+        Column(verticalArrangement = Arrangement.spacedBy(size * 0.04f)) {
+            keys.chunked(2).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(size * 0.04f)) {
+                    row.forEach { k -> env.apps[k]?.let { AppIconImage(it, mini, env.shape) } }
+                }
+            }
+        }
+        if (keys.any { k -> env.apps[k]?.let { env.dot(it) } == true }) {
+            Box(Modifier.align(Alignment.TopEnd).size(size / 4.5f).clip(CircleShape).background(s.accent))
+        }
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Drag layer: the lifted item and where it will land
+// ------------------------------------------------------------------------------------------------
+
+@Composable
+private fun DragLayer(ctrl: HomeController, env: HomeEnv) {
+    val d = ctrl.drag ?: return
+    val s = LocalNamaStyle.current
+    val density = LocalDensity.current
+    val target = ctrl.dropTarget(d)
+    val geom = target?.let { ctrl.grids[it.page] }
+    Box(Modifier.fillMaxSize(), contentAlignment = AbsoluteAlignment.TopLeft) {
+        if (target != null && geom != null) {
+            val r: Rect = if (target.mergeInto != null) geom.rect(target.x, target.y, 1, 1) else geom.rect(target.x, target.y, d.item.w, d.item.h)
+            Box(
+                Modifier.absoluteOffset { IntOffset(r.left.roundToInt(), r.top.roundToInt()) }
+                    .size(with(density) { r.width.toDp() }, with(density) { r.height.toDp() })
+                    .padding(4.dp)
+                    .clip(RoundedCornerShape(s.corner))
+                    .background(s.onWallpaper.copy(alpha = if (target.mergeInto != null) 0.28f else 0.14f))
+                    .border(1.5.dp, s.onWallpaper.copy(alpha = 0.5f), RoundedCornerShape(s.corner))
+            )
+        }
+        val tl = d.pointer - d.grab
+        Box(
+            Modifier.absoluteOffset { IntOffset(tl.x.roundToInt(), tl.y.roundToInt()) }
+                .size(with(density) { d.size.width.toDp() }, with(density) { d.size.height.toDp() })
+                .scale(1.06f).alpha(0.92f)
+        ) {
+            ItemContent(ctrl, env, d.item, d.fromPage, with(density) { d.size.width.toDp() }, with(density) { d.size.height.toDp() })
+        }
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Kids / restricted spaces: a simple grid of allowed apps
+// ------------------------------------------------------------------------------------------------
+
+@Composable
+private fun RestrictedHome(ctrl: HomeController, env: HomeEnv) {
     val s = LocalNamaStyle.current
     val view = LocalView.current
-    val registry = remember { HitRegistry() }
-    var coords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-    val scroll = rememberScrollState()
-    val density = LocalDensity.current
-    val threshold = with(density) { 70.dp.toPx() }
-    var pull by remember { mutableFloatStateOf(0f) }
-    val envNow by rememberUpdatedState(env)
-
-    // Swipe up at the bottom / down at the top of the page triggers the configured gestures.
-    val nested = remember(env.settings.swipeUpAction, env.settings.swipeDownAction) {
-        object : NestedScrollConnection {
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput) pull += available.y
-                return Offset.Zero
-            }
-            override suspend fun onPreFling(available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
-                val p = pull
-                pull = 0f
-                if (p < -threshold) runGesture(ctrl, env.settings.swipeUpAction, view)
-                else if (p > threshold) runGesture(ctrl, env.settings.swipeDownAction, view)
-                return androidx.compose.ui.unit.Velocity.Zero
-            }
-        }
-    }
-
-    Box(
-        Modifier.fillMaxSize()
-            .onGloballyPositioned { coords = it }
-            .pointerInput(env.settings.doubleTapAction, pageIndex) {
-                detectTapGestures(
-                    onLongPress = { pos ->
-                        val c = coords ?: return@detectTapGestures
-                        val locked = Nama.isRestricted(envNow.space) || envNow.space?.overrides?.locked == true
-                        if (!registry.hits(c.localToWindow(pos)) && !locked) {
-                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                            ctrl.homeMenuPage = pageIndex
-                        }
-                    },
-                    onDoubleTap = { pos ->
-                        val c = coords ?: return@detectTapGestures
-                        if (!registry.hits(c.localToWindow(pos))) runGesture(ctrl, env.settings.doubleTapAction, view)
-                    }
-                )
-            }
-    ) {
-        Column(
-            Modifier.fillMaxSize().nestedScroll(nested).verticalScroll(scroll).padding(horizontal = 12.dp),
-            verticalArrangement = if (env.settings.oneHandMode) Arrangement.Bottom else Arrangement.Top
+    val apps = env.apps.values.filter { env.visible(it) }
+    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp)) {
+        Row(
+            Modifier.clip(RoundedCornerShape(50)).background(s.surfaceHigh).clickable { ctrl.spaceSwitcher = true }.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (env.settings.oneHandMode) Spacer(Modifier.height(120.dp))
-            if (pageIndex == 0) PageHeader(ctrl, env, registry)
-            WidgetsArea(ctrl, env, page, pageIndex, registry)
-            Spacer(Modifier.height(8.dp))
-            val items = remember(page.items, env) { visibleItems(page.items, env, pageIndex) }
-            if (s.textOnly) TextList(ctrl, env, items, pageIndex, registry)
-            else IconGrid(ctrl, env, items, pageIndex, registry)
-            Spacer(Modifier.height(24.dp))
+            Icon(Icons.Outlined.Lock, null, tint = s.accent, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(env.space?.name ?: "", color = s.onSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
-    }
-}
-
-/** Items to show: hidden apps removed, folders keep visible apps, pinned space apps first on page 1. */
-private fun visibleItems(items: List<HomeItem>, env: HomeEnv, pageIndex: Int): List<HomeItem> {
-    val out = mutableListOf<HomeItem>()
-    if (pageIndex == 0) {
-        env.space?.overrides?.pinnedApps?.forEach { k ->
-            val e = env.apps[k]
-            if (e != null && env.visible(e)) out += HomeItem.App("pin_$k", k)
-        }
-    }
-    val pinned = out.map { (it as HomeItem.App).key }.toSet()
-    for (item in items) {
-        when (item) {
-            is HomeItem.App -> {
-                val e = env.apps[item.key] ?: continue
-                if (env.visible(e) && item.key !in pinned) out += item
-            }
-            is HomeItem.Folder -> {
-                val keys = folderKeys(item, env)
-                if (keys.isNotEmpty()) out += item
+        Spacer(Modifier.height(16.dp))
+        LazyVerticalGrid(GridCells.Fixed(3), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            items(apps, key = { it.key }) { e ->
+                Column(Modifier.clickable { ctrl.launch(e, view) }, horizontalAlignment = Alignment.CenterHorizontally) {
+                    AppIconImage(e, 72.dp, env.shape)
+                    Text(e.label, style = wallpaperText(14), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+                }
             }
         }
     }
-    return out
-}
-
-fun folderKeys(f: HomeItem.Folder, env: HomeEnv): List<String> {
-    val base = if (f.smartCategory != null) {
-        val stats = Nama.store.appStats.value
-        env.apps.values.filter { it.category == f.smartCategory }
-            .sortedByDescending { stats[it.key]?.launches ?: 0 }.map { it.key }
-    } else f.keys
-    return base.filter { k -> env.apps[k]?.let { env.visible(it) } == true }
 }
 
 fun runGesture(ctrl: HomeController, a: GestureAction, view: android.view.View) {
@@ -371,344 +544,16 @@ fun runGesture(ctrl: HomeController, a: GestureAction, view: android.view.View) 
     val locked = Nama.isRestricted(space) || space?.overrides?.locked == true
     if (locked && (a == GestureAction.SETTINGS || a == GestureAction.EDIT_HOME)) return
     when (a) {
-        GestureAction.NONE -> {}
+        GestureAction.NONE -> return
         GestureAction.DRAWER -> ctrl.drawerOpen = true
         GestureAction.SEARCH -> ctrl.openSearch()
         GestureAction.NOTIFICATIONS -> Actions.expandNotifications(ctx)
         GestureAction.LOCK_SCREEN -> Actions.lockScreen(ctx)
         GestureAction.SPACE_SWITCHER -> ctrl.spaceSwitcher = true
         GestureAction.SETTINGS -> ctx.startActivity(android.content.Intent(ctx, ir.nama.launcher.ui.settings.SettingsActivity::class.java))
-        GestureAction.EDIT_HOME -> ctrl.homeMenuPage = 0
+        GestureAction.EDIT_HOME -> ctrl.homeMenuOpen = true
     }
-    if (a != GestureAction.NONE) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-}
-
-@Composable
-private fun PageHeader(ctrl: HomeController, env: HomeEnv, registry: HitRegistry) {
-    val s = LocalNamaStyle.current
-    val occasion = remember { ir.nama.core.IranCalendar.occasion(java.time.LocalDate.now(), env.settings.hijriOffset) }
-    val greeting = if (env.settings.seasonalThemes) Styles.occasionGreeting(occasion, Nama.isFa) else null
-    val apps = env.apps.values
-    val inbox = apps.count { !it.pref.reviewed && !it.pref.hidden }
-    Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (env.settings.showSpaceBanner || env.space != null) {
-                Chip(
-                    text = env.space?.let { "${it.icon} ${it.name}" } ?: tr("● بدون فضا", "● No space"),
-                    s = s, registry = registry, id = "chip_space"
-                ) { ctrl.spaceSwitcher = true }
-            }
-            if (greeting != null) Chip(greeting, s, registry, "chip_occasion") {}
-            if (inbox > 0 && !Nama.isRestricted(env.space)) {
-                Chip(tr("✦ ${num(inbox)} برنامه تازه", "✦ ${num(inbox)} new apps"), s, registry, "chip_inbox", highlight = true) { ctrl.inboxOpen = true }
-            }
-        }
-        if (env.settings.focusUntil > System.currentTimeMillis()) {
-            val left = (env.settings.focusUntil - System.currentTimeMillis()) / 60_000
-            Chip(tr("◎ حالت تمرکز · ${num(left)} دقیقه مانده", "◎ Focus · ${num(left)} min left"), s, registry, "chip_focus") {
-                Nama.store.settings.update { it.copy(focusUntil = 0L) }
-            }
-        }
-        if (env.settings.nationalNetMode && env.net == NetState.NATIONAL_ONLY) {
-            Chip(tr("🌐 اینترنت بین‌الملل در دسترس نیست؛ برنامه‌های خارجی کم‌رنگ شدند", "🌐 International internet is down; foreign apps are dimmed"), s, registry, "chip_net") {}
-        }
-    }
-}
-
-@Composable
-private fun Chip(text: String, s: NamaStyle, registry: HitRegistry, id: String, highlight: Boolean = false, onClick: () -> Unit) {
-    Text(
-        text,
-        color = if (highlight) s.accent else s.text,
-        fontSize = 12.sp,
-        maxLines = 2,
-        modifier = Modifier
-            .onGloballyPositioned { registry.rects[id] = it.boundsInWindow() }
-            .clip(RoundedCornerShape(14.dp))
-            .background(s.card)
-            .border(1.dp, if (highlight) s.accent.copy(alpha = 0.6f) else s.cardBorder, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 5.dp)
-    )
-}
-
-@Composable
-private fun WidgetsArea(ctrl: HomeController, env: HomeEnv, page: HomePage, pageIndex: Int, registry: HitRegistry) {
-    val activeId = env.space?.id ?: "base"
-    val widgets = page.widgets.filter { it.spaces.isEmpty() || activeId in it.spaces }
-    if (widgets.isEmpty()) return
-    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        var i = 0
-        while (i < widgets.size) {
-            val w = widgets[i]
-            val next = widgets.getOrNull(i + 1)
-            if (w.size == WidgetSize.SMALL && next?.size == WidgetSize.SMALL) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(Modifier.weight(1f).onGloballyPositioned { registry.rects[w.id] = it.boundsInWindow() }) { WidgetHost(ctrl, env, w, pageIndex) }
-                    Box(Modifier.weight(1f).onGloballyPositioned { registry.rects[next.id] = it.boundsInWindow() }) { WidgetHost(ctrl, env, next, pageIndex) }
-                }
-                i += 2
-            } else {
-                Box(Modifier.fillMaxWidth().onGloballyPositioned { registry.rects[w.id] = it.boundsInWindow() }) { WidgetHost(ctrl, env, w, pageIndex) }
-                i += 1
-            }
-        }
-    }
-}
-
-// ------------------------------------------------------------------------------------------------
-// Icon grid with long-press menu and drag-to-reorder / drop-on-icon-to-make-folder
-// ------------------------------------------------------------------------------------------------
-
-@Composable
-private fun IconGrid(ctrl: HomeController, env: HomeEnv, items: List<HomeItem>, pageIndex: Int, registry: HitRegistry) {
-    if (items.isEmpty()) return
-    val s = LocalNamaStyle.current
-    val cols = env.settings.columns.coerceIn(3, 6)
-    val iconDp = env.settings.iconSizeDp.coerceIn(36, 72)
-    val labelDp = if (env.settings.showLabels) 30 else 4
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val density = LocalDensity.current
-    val view = LocalView.current
-    val currentEnv by rememberUpdatedState(env)
-    val currentItems by rememberUpdatedState(items)
-
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val widthPx = constraints.maxWidth.toFloat()
-        val cellW = widthPx / cols
-        val cellH = with(density) { (iconDp + labelDp + 14).dp.toPx() }
-        val rows = (items.size + cols - 1) / cols
-        var dragId by remember { mutableStateOf<String?>(null) }
-        var dragOffset by remember { mutableStateOf(Offset.Zero) }
-        var pressedId by remember { mutableStateOf<String?>(null) }
-
-        // Positions are absolute from the left edge, so drawing and drop math use the same coordinates.
-        // In RTL the first column is on the right.
-        fun cellX(i: Int): Float { val c = i % cols; return if (rtl) widthPx - (c + 1) * cellW else c * cellW }
-        fun cellY(i: Int): Float = (i / cols) * cellH
-
-        Box(Modifier.fillMaxWidth().height(with(density) { (rows * cellH).toDp() }), contentAlignment = AbsoluteAlignment.TopLeft) {
-            items.forEachIndexed { index, item ->
-                val dragging = dragId == item.id
-                val x = cellX(index) + if (dragging) dragOffset.x else 0f
-                val y = cellY(index) + if (dragging) dragOffset.y else 0f
-                val scale by animateFloatAsState(if (dragging || pressedId == item.id) 1.12f else 1f, label = "press")
-                Box(
-                    Modifier
-                        .zIndex(if (dragging) 10f else 0f)
-                        .width(with(density) { cellW.toDp() })
-                        .height(with(density) { cellH.toDp() })
-                        .absoluteOffset { IntOffset(x.roundToInt(), y.roundToInt()) }
-                        .onGloballyPositioned { registry.rects[item.id] = it.boundsInWindow() }
-                        .pointerInput(item.id, index, items.size) {
-                            // One detector for tap, long-press menu and drag, so a long press never also launches.
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                var cancelled = false
-                                val up = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
-                                    waitForUpOrCancellation().also { if (it == null) cancelled = true }
-                                }
-                                if (up != null) {
-                                    up.consume()
-                                    onTap(ctrl, currentEnv, item, pageIndex, view)
-                                    return@awaitEachGesture
-                                }
-                                if (cancelled) return@awaitEachGesture
-                                pressedId = item.id
-                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                                var moved = false
-                                var total = Offset.Zero
-                                while (true) {
-                                    val ev = awaitPointerEvent()
-                                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
-                                    if (!ch.pressed) { ch.consume(); break }
-                                    val d = ch.positionChange()
-                                    ch.consume()
-                                    if (item.id.startsWith("pin_")) continue
-                                    total += d
-                                    if (!moved && (abs(total.x) > 18f || abs(total.y) > 18f)) {
-                                        moved = true
-                                        dragId = item.id
-                                    }
-                                    if (moved) dragOffset = total
-                                }
-                                dragId = null; dragOffset = Offset.Zero; pressedId = null
-                                if (!moved) openMenu(ctrl, currentEnv, item, pageIndex)
-                                else drop(item, index, total, currentItems, pageIndex, cols, cellW, cellH, rtl, widthPx)
-                            }
-                        }
-                        .scale(scale),
-                    contentAlignment = Alignment.TopCenter
-                ) {
-                    GridCell(ctrl, env, item, pageIndex, iconDp, s)
-                }
-            }
-        }
-    }
-}
-
-private fun onTap(ctrl: HomeController, env: HomeEnv, item: HomeItem, pageIndex: Int, view: android.view.View) {
-    when (item) {
-        is HomeItem.App -> env.apps[item.key]?.let { ctrl.launch(it, view) }
-        is HomeItem.Folder -> ctrl.openFolder = FolderTarget(pageIndex, item.id)
-    }
-}
-
-private fun openMenu(ctrl: HomeController, env: HomeEnv, item: HomeItem, pageIndex: Int) {
-    when (item) {
-        is HomeItem.App -> env.apps[item.key]?.let {
-            ctrl.appMenu = AppMenuTarget(it, if (item.id.startsWith("pin_")) MenuSource.Drawer else MenuSource.Home(pageIndex, item.id))
-        }
-        is HomeItem.Folder -> ctrl.openFolder = FolderTarget(pageIndex, item.id)
-    }
-}
-
-/** Reorders or merges items after a drag. Works on the stored layout, not on the filtered list. */
-private fun drop(
-    item: HomeItem, fromIndex: Int, off: Offset, visible: List<HomeItem>, pageIndex: Int,
-    cols: Int, cellW: Float, cellH: Float, rtl: Boolean, widthPx: Float
-) {
-    val c0 = fromIndex % cols
-    val startX = if (rtl) widthPx - (c0 + 1) * cellW else c0 * cellW
-    val cx = startX + cellW / 2 + off.x
-    val cy = (fromIndex / cols) * cellH + cellH / 2 + off.y
-    val colAbs = (cx / cellW).toInt().coerceIn(0, cols - 1)
-    val col = if (rtl) cols - 1 - colAbs else colAbs
-    val row = (cy / cellH).toInt().coerceAtLeast(0)
-    val target = (row * cols + col).coerceIn(0, visible.lastIndex)
-    if (target == fromIndex) return
-    val targetItem = visible[target]
-    // Distance from the target cell's center decides between "merge into folder" and "move".
-    val tc = target % cols
-    val tcx = (if (rtl) widthPx - (tc + 1) * cellW else tc * cellW) + cellW / 2
-    val tcy = (target / cols) * cellH + cellH / 2
-    val nearCenter = abs(cx - tcx) < cellW * 0.28f && abs(cy - tcy) < cellH * 0.28f
-    val store = Nama.store
-    if (nearCenter && item is HomeItem.App && !targetItem.id.startsWith("pin_")) {
-        store.changeLayout(tr("ساخت پوشه", "Make folder")) { l ->
-            l.copy(pages = l.pages.mapIndexed { i, p ->
-                if (i != pageIndex) p else {
-                    val without = p.items.filterNot { it.id == item.id }
-                    p.copy(items = without.map { t ->
-                        when {
-                            t.id != targetItem.id -> t
-                            t is HomeItem.Folder -> t.copy(keys = (t.keys - item.key) + item.key)
-                            t is HomeItem.App -> HomeItem.Folder(HomeController.newId(), Nama.apps.byKey(t.key)?.category?.let { Nama.categoryName(it) } ?: tr("پوشه", "Folder"), listOf(t.key, item.key))
-                            else -> t
-                        }
-                    })
-                }
-            })
-        }
-        return
-    }
-    store.changeLayout(tr("جابه‌جایی", "Move")) { l ->
-        l.copy(pages = l.pages.mapIndexed { i, p ->
-            if (i != pageIndex) p else {
-                val list = p.items.toMutableList()
-                val from = list.indexOfFirst { it.id == item.id }
-                if (from < 0) return@mapIndexed p
-                val moving = list.removeAt(from)
-                val anchor = list.indexOfFirst { it.id == targetItem.id }
-                val insertAt = when {
-                    anchor < 0 -> list.size
-                    target > fromIndex -> anchor + 1
-                    else -> anchor
-                }.coerceIn(0, list.size)
-                list.add(insertAt, moving)
-                p.copy(items = list)
-            }
-        })
-    }
-}
-
-@Composable
-private fun GridCell(ctrl: HomeController, env: HomeEnv, item: HomeItem, pageIndex: Int, iconDp: Int, s: NamaStyle) {
-    Column(
-        Modifier.fillMaxWidth().padding(top = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        when (item) {
-            is HomeItem.App -> {
-                val e = env.apps[item.key]
-                if (e != null) {
-                    AppIconImage(e, iconDp.dp, env.shape, grayscale = env.gray(e), dim = env.dim(e), dot = env.dot(e))
-                    if (env.settings.showLabels) Label(if (e.pref.locked) "🔒 " + e.label else e.label, s)
-                }
-            }
-            is HomeItem.Folder -> {
-                FolderIcon(item, env, iconDp, s)
-                if (env.settings.showLabels) Label(item.name, s)
-            }
-        }
-    }
-}
-
-@Composable
-private fun Label(text: String, s: NamaStyle) {
-    Text(
-        text, color = s.iconLabel, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-        textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp, start = 2.dp, end = 2.dp)
-    )
-}
-
-@Composable
-fun FolderIcon(f: HomeItem.Folder, env: HomeEnv, iconDp: Int, s: NamaStyle) {
-    val keys = folderKeys(f, env).take(4)
-    val shape = RoundedCornerShape((iconDp / 4).dp)
-    Box(
-        Modifier.size(iconDp.dp).clip(shape).background(s.card).border(1.dp, s.cardBorder, shape).padding((iconDp / 9).dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            keys.chunked(2).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    row.forEach { k -> env.apps[k]?.let { AppIconImage(it, ((iconDp - iconDp / 4.5f) / 2 - 1).dp, env.shape) } }
-                }
-            }
-        }
-        val dots = keys.any { k -> env.apps[k]?.let { env.dot(it) } == true }
-        if (dots) Box(Modifier.align(Alignment.TopEnd).size(7.dp).clip(CircleShape).background(s.accent))
-    }
-}
-
-@Composable
-private fun TextList(ctrl: HomeController, env: HomeEnv, items: List<HomeItem>, pageIndex: Int, registry: HitRegistry) {
-    val s = LocalNamaStyle.current
-    val view = LocalView.current
-    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        items.forEach { item ->
-            val (title, sub) = when (item) {
-                is HomeItem.App -> {
-                    val e = env.apps[item.key] ?: return@forEach
-                    val strike = env.gray(e) || ir.nama.core.Friction.has(e.pref.friction, ir.nama.core.Friction.DELAY)
-                    (if (e.pref.locked) "🔒 " else "") + e.label to (if (strike) tr("اصطکاک روشن", "friction on") else null)
-                }
-                is HomeItem.Folder -> item.name + " ›" to null
-            }
-            Row(
-                Modifier.fillMaxWidth()
-                    .onGloballyPositioned { registry.rects[item.id] = it.boundsInWindow() }
-                    .combinedClickable(
-                        onClick = {
-                            when (item) {
-                                is HomeItem.App -> env.apps[item.key]?.let { ctrl.launch(it, view) }
-                                is HomeItem.Folder -> ctrl.openFolder = FolderTarget(pageIndex, item.id)
-                            }
-                        },
-                        onLongClick = { openMenu(ctrl, env, item, pageIndex) }
-                    ).padding(vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                val e = (item as? HomeItem.App)?.let { env.apps[it.key] }
-                Text(
-                    title, color = if (e != null && (env.dim(e) || env.gray(e))) s.subText else s.text,
-                    fontSize = 22.sp, fontWeight = FontWeight.Light, maxLines = 1, overflow = TextOverflow.Ellipsis
-                )
-                if (sub != null) Text("  $sub", color = s.subText, fontSize = 10.sp)
-                if (e != null && env.dot(e)) Text("  •", color = s.accent, fontSize = 18.sp)
-            }
-        }
-    }
+    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
 }
 
 /** Fades and slides an overlay in from the bottom. */
@@ -716,7 +561,7 @@ private fun TextList(ctrl: HomeController, env: HomeEnv, items: List<HomeItem>, 
 fun BottomOverlay(visible: Boolean, reduceMotion: Boolean, content: @Composable () -> Unit) {
     AnimatedVisibility(
         visible = visible,
-        enter = if (reduceMotion) fadeIn() else slideInVertically { it / 3 } + fadeIn(),
-        exit = if (reduceMotion) fadeOut() else slideOutVertically { it / 3 } + fadeOut()
+        enter = if (reduceMotion) fadeIn() else slideInVertically { it / 4 } + fadeIn(),
+        exit = if (reduceMotion) fadeOut() else slideOutVertically { it / 4 } + fadeOut()
     ) { content() }
 }

@@ -15,6 +15,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -28,11 +29,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.LayoutDirection
@@ -43,16 +46,20 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import ir.nama.core.IranCalendar
+import ir.nama.core.StyleId
 import ir.nama.launcher.CrashGuard
 import ir.nama.launcher.Nama
+import ir.nama.launcher.data.IconMode
+import ir.nama.launcher.data.IconShape
 import ir.nama.launcher.data.NotificationRepo
 import ir.nama.launcher.data.WidgetInstance
 import ir.nama.launcher.data.WidgetType
+import ir.nama.launcher.logic.Templates
 import ir.nama.launcher.system.Actions
 import ir.nama.launcher.tr
+import ir.nama.launcher.ui.common.LocalIconMode
 import ir.nama.launcher.ui.home.AppDrawer
-import ir.nama.launcher.ui.home.AppMenuSheet
+import ir.nama.launcher.ui.home.AppSettingsDialog
 import ir.nama.launcher.ui.home.BottomOverlay
 import ir.nama.launcher.ui.home.FolderDialog
 import ir.nama.launcher.ui.home.GateDialog
@@ -62,28 +69,30 @@ import ir.nama.launcher.ui.home.HomeController
 import ir.nama.launcher.ui.home.HomeEnv
 import ir.nama.launcher.ui.home.HomeMenuSheet
 import ir.nama.launcher.ui.home.HomeScreen
-import ir.nama.launcher.ui.home.InboxSheet
 import ir.nama.launcher.ui.home.SearchOverlay
 import ir.nama.launcher.ui.home.SmartSortDialog
 import ir.nama.launcher.ui.home.SpaceSwitcherSheet
-import ir.nama.launcher.ui.home.WidgetMenuSheet
-import ir.nama.launcher.ui.home.WidgetPickerSheet
+import ir.nama.launcher.ui.home.WidgetPicker
 import ir.nama.launcher.ui.onboarding.OnboardingActivity
 import ir.nama.launcher.ui.theme.LocalNamaStyle
-import ir.nama.launcher.ui.theme.StyleBackground
-import ir.nama.launcher.ui.theme.Styles
+import ir.nama.launcher.ui.theme.MinimalScheme
+import ir.nama.launcher.ui.theme.buildStyle
+import ir.nama.launcher.ui.theme.namaColorScheme
 import ir.nama.launcher.ui.theme.namaTypography
-import ir.nama.launcher.ui.theme.schemeFor
+import ir.nama.launcher.ui.theme.wallpaperPrefersDarkText
 import ir.nama.launcher.ui.widgets.AppWidgets
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 
 class MainActivity : AppCompatActivity() {
     private lateinit var ctrl: HomeController
     private val handler = Handler(Looper.getMainLooper())
+    /** Bumped on resume so wallpaper-dependent colours are re-read after the wallpaper changes. */
+    private val wallpaperTick = mutableIntStateOf(0)
 
     private var pendingWidgetId = -1
     private var pendingWidgetPage = 0
@@ -113,7 +122,20 @@ class MainActivity : AppCompatActivity() {
             override fun handleOnBackPressed() { ctrl.closeAll() }
         })
 
-        setContent { HomeRoot(ctrl, ::pickSystemWidget) }
+        setContent { HomeRoot(ctrl, wallpaperTick) { info -> pickSystemWidget(info, ctrl.currentPage.coerceAtLeast(0)) } }
+
+        // A layout from an older version could not be read: rebuild a fresh one instead of an empty home.
+        if (!Nama.store.layout.existedOnLoad && Nama.settings.onboarded) lifecycleScope.launch {
+            try {
+                val apps = withTimeoutOrNull(10_000) { Nama.apps.apps.first { it.isNotEmpty() } } ?: Nama.apps.apps.value
+                val s = Nama.settings
+                if (Nama.store.layout.value.pages.all { it.items.isEmpty() }) {
+                    Nama.store.changeLayoutSilently { Templates.initialLayout(apps, s.persona, s.interests, s.style, ctrl.cols, ctrl.rows) }
+                }
+            } catch (e: Exception) {
+                Log.w("Nama", "layout rebuild failed", e)
+            }
+        }
 
         if (!Nama.settings.onboarded) startActivity(Intent(this, OnboardingActivity::class.java))
         else if (intent?.getBooleanExtra(EXTRA_ASK_DEFAULT, false) == true && !Actions.isDefaultLauncher(this)) {
@@ -147,6 +169,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (!::ctrl.isInitialized) return
+        wallpaperTick.intValue++
         try {
             Nama.context.refresh()
             Nama.remote.refreshIfStale()
@@ -225,12 +248,11 @@ class MainActivity : AppCompatActivity() {
         val info = pendingProvider ?: return
         val id = pendingWidgetId
         val density = resources.displayMetrics.density
-        val h = (info.minHeight / density).toInt().coerceIn(80, 420)
-        val w = WidgetInstance(HomeController.newId(), WidgetType.SYSTEM, appWidgetId = id, heightDp = h + 16)
-        val page = pendingWidgetPage
-        Nama.store.changeLayout(tr("افزودن ویجت", "Add widget")) { l ->
-            l.copy(pages = l.pages.mapIndexed { i, p -> if (i == page.coerceIn(0, l.pages.lastIndex)) p.copy(widgets = p.widgets + w) else p })
-        }
+        val g = ctrl.grids[pendingWidgetPage] ?: ctrl.grids.values.firstOrNull()
+        val span = if (g != null) AppWidgets.spanFor(info, g.cellW / density, g.cellH / density, density, ctrl.cols, ctrl.rows)
+        else AppWidgets.spanFor(info, 90f, 110f, density, ctrl.cols, ctrl.rows)
+        val ok = ctrl.addWidget(WidgetInstance(HomeController.newId(), WidgetType.SYSTEM, appWidgetId = id), span, pendingWidgetPage)
+        if (!ok) AppWidgets.delete(this, id)
         pendingProvider = null
         pendingWidgetId = -1
     }
@@ -248,7 +270,7 @@ class MainActivity : AppCompatActivity() {
 }
 
 @Composable
-private fun HomeRoot(ctrl: HomeController, pickSystemWidget: (AppWidgetProviderInfo, Int) -> Unit) {
+private fun HomeRoot(ctrl: HomeController, wallpaperTick: androidx.compose.runtime.MutableIntState, pickSystemWidget: (AppWidgetProviderInfo) -> Unit) {
     val activity = ctrl.activity
     val settings by Nama.store.settings.flow.collectAsStateWithLifecycle()
     val space by Nama.spaces.active.collectAsStateWithLifecycle()
@@ -258,24 +280,43 @@ private fun HomeRoot(ctrl: HomeController, pickSystemWidget: (AppWidgetProviderI
     val net by Nama.net.state.collectAsStateWithLifecycle()
 
     val styleId = space?.overrides?.style ?: settings.style
-    val darkTint = space?.overrides?.darkTint == true
-    val accent = remember(settings.useSystemWallpaper, styleId) { Styles.wallpaperAccent(activity) }
-    val occasion = remember { IranCalendar.occasion(LocalDate.now(), settings.hijriOffset) }
-    val style = remember(styleId, accent, settings.useSystemWallpaper, darkTint, settings.seasonalThemes) {
-        Styles.seasonal(Styles.build(styleId, accent, settings.useSystemWallpaper, darkTint), if (settings.seasonalThemes) occasion else IranCalendar.Occasion.NONE)
+    val minimal = styleId == StyleId.MINIMAL
+    val systemDark = isSystemInDarkTheme()
+    val tick = wallpaperTick.intValue
+    val darkText = remember(tick) { wallpaperPrefersDarkText(activity) }
+    // Menus and sheets follow the phone's dark mode; minimal is always black.
+    val scheme = remember(minimal, systemDark, tick) { if (minimal) MinimalScheme else namaColorScheme(activity, systemDark) }
+    val style = remember(styleId, scheme, darkText) { buildStyle(styleId, scheme, darkText && !minimal) }
+    val iconMode = when {
+        minimal -> IconMode(IconMode.Kind.MONO, fg = 0xFFE6E6E6.toInt(), bg = 0)
+        settings.themedIcons -> IconMode(IconMode.Kind.THEMED, fg = scheme.onPrimaryContainer.toArgb(), bg = scheme.primaryContainer.toArgb())
+        else -> IconMode.NORMAL
     }
-    val shape = settings.iconShape ?: style.defaultShape
+    val shape = settings.iconShape ?: IconShape.CIRCLE
     val appMap = remember(apps) { apps.associateBy { it.key } }
     val env = HomeEnv(
         settings, space, appMap, counts, usage, net, shape,
-        settings.reduceMotion || space?.overrides?.reduceMotion == true
+        settings.reduceMotion || space?.overrides?.reduceMotion == true,
+        iconMode
     )
     val view = LocalView.current
+    val overlayOpen = ctrl.drawerOpen || ctrl.searchOpen || ctrl.widgetPickerOpen
     SideEffect {
         val c = WindowCompat.getInsetsController(activity.window, view)
-        c.isAppearanceLightStatusBars = !style.dark
-        c.isAppearanceLightNavigationBars = !style.dark
+        val lightBars = if (overlayOpen) !systemDark && !minimal else !style.lightContentOnWallpaper
+        c.isAppearanceLightStatusBars = lightBars
+        c.isAppearanceLightNavigationBars = lightBars
     }
+    // Newly installed apps get an icon on the home screen, like stock Android.
+    LaunchedEffect(apps) {
+        if (!settings.onboarded) return@LaunchedEffect
+        apps.filter { !it.pref.reviewed }.forEach { e ->
+            if (settings.autoInboxNewApps && !e.pref.hidden) ctrl.addApp(e.key, 1, quiet = true)
+            Nama.store.updatePref(e.key) { it.copy(reviewed = true) }
+        }
+    }
+    // Keep every item inside the grid when the user changes rows or columns.
+    LaunchedEffect(settings.columns, settings.rows) { ctrl.normalizeLayout() }
     // Announce space changes.
     LaunchedEffect(space?.id) {
         val sp = space
@@ -287,29 +328,31 @@ private fun HomeRoot(ctrl: HomeController, pickSystemWidget: (AppWidgetProviderI
     }
     val rtl = settings.language != "en"
     key(settings.language) {
-        MaterialTheme(colorScheme = schemeFor(style), typography = namaTypography()) {
+        MaterialTheme(colorScheme = scheme, typography = namaTypography()) {
             CompositionLocalProvider(
                 LocalNamaStyle provides style,
+                LocalIconMode provides iconMode,
                 LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr
             ) {
                 Box(Modifier.fillMaxSize()) {
-                    StyleBackground(style)
+                    style.background?.let { bg -> Box(Modifier.fillMaxSize().background(bg)) }
                     HomeScreen(ctrl, env)
                     BottomOverlay(ctrl.drawerOpen, env.reduceMotion) { AppDrawer(ctrl, env) }
                     BottomOverlay(ctrl.searchOpen, env.reduceMotion) { SearchOverlay(ctrl, env) }
+                    BottomOverlay(ctrl.widgetPickerOpen, env.reduceMotion) { WidgetPicker(ctrl, pickSystemWidget) }
 
-                    // App menus (hide, uninstall, settings…) are not offered inside kids/guest spaces.
-                    val lockedSpace = Nama.isRestricted(space) || space?.overrides?.locked == true
-                    ctrl.appMenu?.let { if (lockedSpace) ctrl.appMenu = null else AppMenuSheet(ctrl, env, it) }
                     ctrl.openFolder?.let { FolderDialog(ctrl, env, it) }
-                    ctrl.homeMenuPage?.let { HomeMenuSheet(ctrl, it) }
-                    ctrl.widgetPickerPage?.let { page -> WidgetPickerSheet(ctrl, page) { info -> pickSystemWidget(info, page) } }
-                    ctrl.widgetMenu?.let { (page, w) -> WidgetMenuSheet(ctrl, page, w) { id -> AppWidgets.delete(activity, id) } }
+                    // Editing is not offered inside kids/guest spaces.
+                    if (env.locked) {
+                        if (ctrl.homeMenuOpen || ctrl.appSettings != null) { ctrl.homeMenuOpen = false; ctrl.appSettings = null }
+                    } else {
+                        if (ctrl.homeMenuOpen) HomeMenuSheet(ctrl)
+                        ctrl.appSettings?.let { e -> AppSettingsDialog(e) { ctrl.appSettings = null } }
+                        if (ctrl.hiddenAppsOpen) HiddenAppsSheet(ctrl, env)
+                        if (ctrl.smartSortOpen) SmartSortDialog(ctrl, env)
+                        if (ctrl.historyOpen) HistorySheet(ctrl)
+                    }
                     if (ctrl.spaceSwitcher) SpaceSwitcherSheet(ctrl)
-                    if (ctrl.inboxOpen) InboxSheet(ctrl, env)
-                    if (ctrl.hiddenAppsOpen) HiddenAppsSheet(ctrl, env)
-                    if (ctrl.smartSortOpen) SmartSortDialog(ctrl, env)
-                    if (ctrl.historyOpen) HistorySheet(ctrl)
                     ctrl.gate?.let { GateDialog(ctrl, it) }
 
                     AnimatedVisibility(
@@ -317,8 +360,8 @@ private fun HomeRoot(ctrl: HomeController, pickSystemWidget: (AppWidgetProviderI
                         modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 8.dp)
                     ) {
                         Text(
-                            ctrl.banner ?: "", color = Color.White, fontSize = 13.sp,
-                            modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(Color.Black.copy(alpha = 0.72f))
+                            ctrl.banner ?: "", color = MaterialTheme.colorScheme.inverseOnSurface, fontSize = 13.sp,
+                            modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.inverseSurface)
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }

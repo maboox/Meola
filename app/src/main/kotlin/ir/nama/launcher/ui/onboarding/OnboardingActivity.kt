@@ -12,6 +12,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.RadioButton
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -61,8 +67,6 @@ import ir.nama.launcher.tr
 import ir.nama.launcher.ui.MainActivity
 import ir.nama.launcher.ui.common.ChoiceDialog
 import ir.nama.launcher.ui.theme.NamaAppTheme
-import ir.nama.launcher.ui.theme.StyleBackground
-import ir.nama.launcher.ui.theme.Styles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -80,7 +84,7 @@ class OnboardingActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             var lang by remember { mutableStateOf(Nama.settings.language) }
-            NamaAppTheme(dark = isSystemInDarkTheme(), rtl = lang != "en") {
+            NamaAppTheme(rtl = lang != "en") {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Onboarding(
                         lang = lang,
@@ -106,7 +110,7 @@ class OnboardingActivity : AppCompatActivity() {
 @Composable
 private fun Onboarding(lang: String, onLang: (String) -> Unit, askLocation: () -> Unit, done: (askDefault: Boolean) -> Unit) {
     var step by remember { mutableIntStateOf(0) }
-    var style by remember { mutableStateOf(StyleId.PERSIAN) }
+    var style by remember { mutableStateOf(StyleId.DEFAULT) }
     var interests by remember { mutableStateOf(setOf<String>()) }
     var persona by remember { mutableStateOf<String?>(null) }
     var city by remember { mutableStateOf("tehran") }
@@ -131,12 +135,12 @@ private fun Onboarding(lang: String, onLang: (String) -> Unit, askLocation: () -
                         onboarded = true, onboardedAt = System.currentTimeMillis(), style = style, interests = interests,
                         persona = persona, cityId = city, language = lang,
                         newsSourceIds = Templates.newsSourcesFor(interests, persona),
-                        iconSizeDp = if (persona == "retired") 62 else 52,
-                        columns = if (persona == "retired") 3 else 4
+                        iconSizeDp = if (persona == "retired") 62 else 54,
+                        columns = 4, rows = 6
                     )
                 }
                 st.spaces.set(Templates.spacesFor(persona, homeSsid, workSsid))
-                st.changeLayout(tr("راه‌اندازی", "Setup")) { Templates.initialLayout(apps, persona, interests, style) }
+                st.changeLayout(tr("راه‌اندازی", "Setup")) { Templates.initialLayout(apps, persona, interests, style, 4, 6) }
                 // Apps installed before setup are not "new".
                 st.appPrefs.update { m -> m.mapValues { (_, p) -> p.copy(reviewed = true) } }
                 st.flushAll()
@@ -176,10 +180,8 @@ private fun Onboarding(lang: String, onLang: (String) -> Unit, askLocation: () -
                 }
                 1 -> {
                     Title(tr("کدام ظاهر؟", "Which look?"), tr("بعداً می‌توانی برای هر فضا ظاهر جدا بگذاری.", "You can set a different look per space later."))
-                    StyleId.entries.chunked(2).forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(vertical = 5.dp)) {
-                            row.forEach { id -> StyleCard(id, id == style, Modifier.weight(1f)) { style = id } }
-                        }
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        StyleId.entries.forEach { id -> StyleCard(id, id == style, Modifier.weight(1f)) { style = id } }
                     }
                 }
                 2 -> {
@@ -197,13 +199,12 @@ private fun Onboarding(lang: String, onLang: (String) -> Unit, askLocation: () -
                             row.forEach { p ->
                                 val sel = persona == p.id
                                 Column(
-                                    Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
-                                        .border(if (sel) 2.dp else 1.dp, if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
-                                        .background(if (sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface)
-                                        .clickable { persona = p.id }.padding(12.dp)
+                                    Modifier.weight(1f).clip(RoundedCornerShape(20.dp))
+                                        .background(if (sel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
+                                        .clickable { persona = p.id }.padding(horizontal = 14.dp, vertical = 12.dp)
                                 ) {
-                                    Text(tr(p.fa, p.en), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Text(tr(p.hintFa, p.hintEn), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(tr(p.fa, p.en), style = MaterialTheme.typography.titleSmall, color = if (sel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                                    Text(tr(p.hintFa, p.hintEn), style = MaterialTheme.typography.bodySmall, color = if (sel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -235,28 +236,48 @@ private fun Title(t: String, sub: String) {
 
 @Composable
 private fun StyleCard(id: StyleId, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val st = Styles.build(id, null, false, false)
-    Column(modifier) {
+    val cs = MaterialTheme.colorScheme
+    val minimal = id == StyleId.MINIMAL
+    val fg = if (minimal) Color(0xFFEDEDED) else Color.White
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(16.dp))
-                .border(if (selected) 3.dp else 1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
-                .clickable(onClick = onClick)
+            Modifier.fillMaxWidth().aspectRatio(0.52f).clip(RoundedCornerShape(26.dp))
+                .border(if (selected) 3.dp else 1.dp, if (selected) cs.primary else cs.outlineVariant, RoundedCornerShape(26.dp))
+                .background(
+                    if (minimal) Brush.verticalGradient(listOf(Color.Black, Color.Black))
+                    else Brush.verticalGradient(listOf(cs.primary, cs.tertiary.copy(alpha = 0.9f), cs.secondary))
+                )
+                .clickable(onClick = onClick).padding(12.dp)
         ) {
-            StyleBackground(st)
-            Column(Modifier.padding(12.dp)) {
-                Text(ir.nama.launcher.num("9:41"), color = if (st.pattern) st.accent2 else st.text, fontSize = 30.sp, fontFamily = st.clockFont, fontWeight = FontWeight.Light)
-                Text(tr("جمعه ۱۷ مهر", "Fri 17 Mehr"), color = st.subText, fontSize = 11.sp)
-                Spacer(Modifier.height(8.dp))
-                if (st.textOnly) {
-                    listOf(tr("پیام‌رسان", "Messages"), tr("نقشه", "Maps"), tr("بانک", "Bank")).forEach { Text(it, color = st.text, fontSize = 13.sp, fontWeight = FontWeight.Light) }
-                } else Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    repeat(4) {
-                        Box(Modifier.size(22.dp).clip(if (id == StyleId.PERSIAN) RoundedCornerShape(11.dp, 11.dp, 4.dp, 4.dp) else RoundedCornerShape(7.dp)).background(if (id == StyleId.PERSIAN) st.accent else st.card).border(1.dp, st.cardBorder, RoundedCornerShape(7.dp)))
+            Column(Modifier.fillMaxSize()) {
+                Spacer(Modifier.height(10.dp))
+                Text(ir.nama.launcher.num("9:41"), color = fg, fontSize = 34.sp, fontWeight = FontWeight.ExtraLight)
+                Text(tr("جمعه ۱۷ مهر", "Fri 17 Mehr"), color = fg.copy(alpha = 0.8f), fontSize = 11.sp)
+                Spacer(Modifier.weight(1f))
+                repeat(2) {
+                    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        repeat(4) {
+                            if (minimal) Box(Modifier.size(20.dp).border(1.5.dp, fg.copy(alpha = 0.7f), CircleShape))
+                            else Box(Modifier.size(20.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.92f)))
+                        }
                     }
                 }
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    Modifier.fillMaxWidth().height(20.dp).clip(RoundedCornerShape(10.dp))
+                        .background(if (minimal) Color(0xFF1A1A1A) else Color.White.copy(alpha = 0.85f))
+                )
             }
         }
-        Text(tr(id.fa, id.en), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.padding(top = 4.dp))
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected, onClick)
+            Text(tr(id.fa, id.en), style = MaterialTheme.typography.titleSmall)
+        }
+        Text(
+            if (minimal) tr("سیاه، بی‌رنگ، آرام", "Black, colourless, calm") else tr("رنگ‌ها از والپیپر شما", "Colours from your wallpaper"),
+            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, textAlign = TextAlign.Center
+        )
     }
 }
 

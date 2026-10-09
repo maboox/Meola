@@ -54,65 +54,15 @@ import ir.nama.core.JalaliDate
 import ir.nama.core.SearchScorer
 import ir.nama.launcher.Nama
 import ir.nama.launcher.data.AppEntry
+import ir.nama.launcher.data.IconMode
 import ir.nama.launcher.data.IconShape
 import ir.nama.launcher.num
 import ir.nama.launcher.tr
 import ir.nama.launcher.ui.theme.LocalNamaStyle
 import java.time.LocalDate
 
-/** A card in the current home style. */
-@Composable
-fun NamaCard(
-    modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null,
-    onLongClick: (() -> Unit)? = null,
-    padding: PaddingValues = PaddingValues(14.dp),
-    content: @Composable ColumnScope.() -> Unit
-) {
-    val s = LocalNamaStyle.current
-    val shape = RoundedCornerShape(s.cardRadius)
-    Column(
-        modifier
-            .clip(shape)
-            .background(s.card)
-            .then(if (s.textOnly) Modifier else Modifier.border(1.dp, s.cardBorder, shape))
-            .then(
-                if (onClick != null || onLongClick != null) Modifier.combinedClickable(
-                    onClick = { onClick?.invoke() },
-                    onLongClick = onLongClick
-                ) else Modifier
-            )
-            .padding(padding),
-        content = content
-    )
-}
-
-@Composable
-fun CardTitle(text: String, trailing: String? = null) {
-    val s = LocalNamaStyle.current
-    Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(text, color = s.subText, fontSize = 12.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-        if (trailing != null) Text(trailing, color = s.subText, fontSize = 11.sp)
-    }
-}
-
-@Composable
-fun StyledText(
-    text: String,
-    modifier: Modifier = Modifier,
-    size: Int = 14,
-    weight: FontWeight = FontWeight.Normal,
-    sub: Boolean = false,
-    color: Color? = null,
-    maxLines: Int = Int.MAX_VALUE,
-    align: TextAlign? = null
-) {
-    val s = LocalNamaStyle.current
-    Text(
-        text, modifier = modifier, color = color ?: if (sub) s.subText else s.text, fontSize = size.sp, fontWeight = weight,
-        maxLines = maxLines, overflow = TextOverflow.Ellipsis, textAlign = align, lineHeight = (size * 1.6).sp
-    )
-}
+/** Icon rendering mode for the current screen (normal, themed or monochrome). */
+val LocalIconMode = androidx.compose.runtime.staticCompositionLocalOf { IconMode.NORMAL }
 
 private val grayscaleFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
 
@@ -125,13 +75,14 @@ fun AppIconImage(
     modifier: Modifier = Modifier,
     grayscale: Boolean = false,
     dim: Boolean = false,
-    dot: Boolean = false
+    dot: Boolean = false,
+    mode: IconMode = LocalIconMode.current
 ) {
     val px = with(LocalDensity.current) { size.roundToPx() }
     val pack = Nama.settings.iconPack
     val version by Nama.apps.packageEvents.collectAsState()
-    val bmp by produceState(Nama.icons.peek(entry.key, shape, px, pack), entry.key, shape, px, pack, version) {
-        value = Nama.icons.load(entry.key, shape, px, pack)
+    val bmp by produceState(Nama.icons.peek(entry.key, shape, px, pack, mode), entry.key, shape, px, pack, version, mode) {
+        value = Nama.icons.load(entry.key, shape, px, pack, mode)
     }
     val s = LocalNamaStyle.current
     Box(modifier.size(size)) {
@@ -144,14 +95,14 @@ fun AppIconImage(
             )
         } else {
             Box(
-                Modifier.size(size).clip(CircleShape).background(s.card),
+                Modifier.size(size).clip(CircleShape).background(s.accentContainer),
                 contentAlignment = Alignment.Center
-            ) { Text(entry.label.take(1), color = s.text, fontSize = (size.value / 2.6f).sp) }
+            ) { Text(entry.label.take(1), color = s.onAccentContainer, fontSize = (size.value / 2.6f).sp) }
         }
         if (dot) {
             Box(
-                Modifier.align(Alignment.TopEnd).size(size / 5).clip(CircleShape).background(s.accent)
-                    .border(1.5.dp, Color.Black.copy(alpha = 0.25f), CircleShape)
+                Modifier.align(Alignment.TopEnd).size(size / 4.5f).clip(CircleShape).background(s.accent)
+                    .border(2.dp, Color.Black.copy(alpha = 0.18f), CircleShape)
             )
         }
     }
@@ -286,7 +237,7 @@ fun AppPickerDialog(
                             }.padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            AppIconImage(e, 32.dp, IconShape.CIRCLE)
+                            AppIconImage(e, 36.dp, IconShape.SQUIRCLE, mode = IconMode.NORMAL)
                             Spacer(Modifier.width(10.dp))
                             Text(e.label, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (!single) Checkbox(checked = e.key in chosen, onCheckedChange = null)

@@ -209,3 +209,25 @@ class SpaceTest {
         assertFalse(AppClassifier.classify(AppFacts("com.android.bluetooth", "Bluetooth", isSystem = true)) == AppCategory.FINANCE)
     }
 }
+
+class GridTest {
+    @Test fun placement() {
+        val cells = listOf(Cell("clock", 0, 0, 4, 2), Cell("a", 0, 5))
+        assertFalse(GridMath.canPlace(cells, Cell("x", 1, 1, 2, 2), 4, 6))
+        assertTrue(GridMath.canPlace(cells, Cell("x", 0, 2, 2, 2), 4, 6))
+        assertFalse(GridMath.canPlace(cells, Cell("x", 3, 0, 2, 1), 4, 6))
+        assertEquals(0 to 2, GridMath.findFree(cells, 4, 2, 4, 6))
+        assertEquals(1 to 5, GridMath.findFree(cells, 1, 1, 4, 6, fromBottom = true))
+        assertNull(GridMath.findFree(cells, 4, 5, 4, 6))
+        assertEquals("a", GridMath.at(cells, 0, 5)?.id)
+    }
+
+    @Test fun normalizeShrinksGrid() {
+        val cells = listOf(Cell("w", 0, 0, 5, 2), Cell("a", 4, 3), Cell("b", 0, 3))
+        val (placed, homeless) = GridMath.normalize(cells, 4, 6)
+        assertTrue(homeless.isEmpty())
+        assertEquals(4, placed.first { it.id == "w" }.w)
+        assertTrue(placed.all { GridMath.fits(it, 4, 6) })
+        for (i in placed.indices) for (j in placed.indices) if (i != j) assertFalse(placed[i].overlaps(placed[j]))
+    }
+}

@@ -35,6 +35,28 @@ PY
   echo "text not found: $1"; return 1
 }
 
+# Taps the first element whose content description contains $1 (icon buttons).
+tap_desc() {
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
+  adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
+  local xy
+  xy=$(python3 - "$1" <<'PY'
+import re, sys
+needle = sys.argv[1]
+xml = open('/tmp/ui.xml', encoding='utf-8').read()
+for m in re.finditer(r'<node [^>]*?content-desc="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml):
+    if needle in m.group(1):
+        x1, y1, x2, y2 = map(int, m.groups()[1:])
+        print((x1 + x2) // 2, (y1 + y2) // 2)
+        break
+PY
+)
+  if [ -n "$xy" ]; then adb shell input tap $xy; echo "tapped desc '$1' at $xy"; return 0; fi
+  echo "desc not found: $1"; return 1
+}
+
+long_press() { adb shell input swipe $1 $2 $1 $2 1200; }
+
 crashed() {
   adb logcat -d | grep -q "FATAL EXCEPTION" && return 0
   return 1
@@ -52,17 +74,20 @@ shot 06_home_first 10
 
 # Drag-and-drop: drop the first app (rightmost in RTL) onto its neighbour to make a folder.
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml /tmp/ui.xml >/dev/null 2>&1
-read X1 Y1 X2 Y2 < <(python3 - <<'PY'
-import re
+read X1 Y1 X2 Y2 < <(python3 - "$H" <<'PY'
+import re, sys
+H = int(sys.argv[1])
 xml = open('/tmp/ui.xml', encoding='utf-8').read()
 labels = []
 for t,a,b,c,d in re.findall(r'text="([^"]+)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', xml):
     a,b,c,d = map(int,(a,b,c,d))
-    if 900 < b < 1900 and (c-a) < 300 and len(t) < 14:
-        labels.append((b, -a, (a+c)//2, b - 70))
+    if H * 0.5 < b < H - 250 and (c-a) < 300 and len(t) < 14:
+        labels.append((-b, -a, (a+c)//2, b - 70))
 labels.sort()
-if len(labels) >= 2:
-    print(labels[0][2], labels[0][3], labels[1][2], labels[1][3])
+# The bottom row of icons (favorites): the two right-most labels on it.
+row = [l for l in labels if l[0] == labels[0][0]] if labels else []
+if len(row) >= 2:
+    print(row[0][2], row[0][3], row[1][2], row[1][3])
 PY
 )
 if [ -n "${X2:-}" ]; then
@@ -77,7 +102,7 @@ adb shell input keyevent KEYCODE_HOME
 shot 07_home_after_home_key 4
 
 # --- Drawer, search, news, menus ---------------------------------------------------------------
-tap_text "⋮⋮"
+tap_desc "همه برنامه‌ها"
 shot 08_drawer 3
 # Long press the first app in the drawer: app menu.
 adb shell input swipe $((W*85/100)) $((H*30/100)) $((W*85/100)) $((H*30/100)) 1200
@@ -103,13 +128,25 @@ sleep 2
 adb shell input swipe $((W*85/100)) $((H/2)) $((W*15/100)) $((H/2)) 300
 shot 13_page2 3
 adb shell input keyevent KEYCODE_HOME
-# Long press on the space chip area opens the space switcher; long press low on the page opens the home menu.
-tap_text "بدون فضا" || tap_text "●"
-shot 14_space_switcher 2
+sleep 2
+# Long press on an empty spot: home menu, then the widget picker, then add a widget.
+long_press $((W/2)) $((H*60/100))
+shot 14_home_menu 2
+tap_text "فضاها"; shot 14b_space_switcher 2
+adb shell input keyevent KEYCODE_BACK; sleep 1
+long_press $((W/2)) $((H*60/100)); sleep 2
+tap_text "ویجت‌ها"; shot 15_widget_picker 3
+adb shell input swipe $((W/2)) $((H*75/100)) $((W/2)) $((H*35/100)) 400
+shot 15b_widget_picker_scrolled 2
+tap_text "افزودن"; shot 16_widget_added 4
+# Long press the at-a-glance widget at the top: widget menu with sizes.
+long_press $((W/2)) $((H*14/100))
+shot 17_widget_menu 2
 adb shell input keyevent KEYCODE_BACK
+adb shell input keyevent KEYCODE_HOME
 
-# --- Styles: switch through all four from settings --------------------------------------------
-for style in "شیشه‌ای مدرن" "مینیمال آرام" "داشبوردی" "ایرانیِ مدرن"; do
+# --- Styles: switch between the two from settings ----------------------------------------------
+for style in "مینیمال" "پیش‌فرض"; do
   adb shell am start -n $PKG/.ui.EntryActivity; sleep 3
   tap_text "ظاهر"; sleep 1
   tap_text "سبک پایه"; sleep 1

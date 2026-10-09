@@ -128,6 +128,12 @@ class IconPackManager(private val context: Context) {
     }
 }
 
+/** How icons are drawn: as the app made them, tinted from the wallpaper, or single colour (minimal). */
+data class IconMode(val kind: Kind, val fg: Int = 0, val bg: Int = 0) {
+    enum class Kind { NORMAL, THEMED, MONO }
+    companion object { val NORMAL = IconMode(Kind.NORMAL) }
+}
+
 class IconLoader(private val context: Context, private val apps: AppsRepository, val packs: IconPackManager) {
     private val cache = object : LruCache<String, ImageBitmap>(24 * 1024 * 1024) {
         override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
@@ -136,21 +142,22 @@ class IconLoader(private val context: Context, private val apps: AppsRepository,
     @OptIn(ExperimentalCoroutinesApi::class)
     private val io = Dispatchers.IO.limitedParallelism(3)
 
-    private fun cacheKey(key: String, shape: IconShape, px: Int, pack: String?) = "$key|$shape|$px|$pack"
+    private fun cacheKey(key: String, shape: IconShape, px: Int, pack: String?, mode: IconMode) = "$key|$shape|$px|$pack|$mode"
 
-    fun peek(key: String, shape: IconShape, px: Int, pack: String?): ImageBitmap? = cache.get(cacheKey(key, shape, px, pack))
+    fun peek(key: String, shape: IconShape, px: Int, pack: String?, mode: IconMode = IconMode.NORMAL): ImageBitmap? =
+        cache.get(cacheKey(key, shape, px, pack, mode))
 
     fun clear() = cache.evictAll()
 
-    suspend fun load(key: String, shape: IconShape, px: Int, pack: String?): ImageBitmap? {
-        val ck = cacheKey(key, shape, px, pack)
+    suspend fun load(key: String, shape: IconShape, px: Int, pack: String?, mode: IconMode = IconMode.NORMAL): ImageBitmap? {
+        val ck = cacheKey(key, shape, px, pack, mode)
         cache.get(ck)?.let { return it }
         return withContext(io) {
-            cache.get(ck) ?: render(key, shape, px, pack)?.also { cache.put(ck, it) }
+            cache.get(ck) ?: render(key, shape, px, pack, mode)?.also { cache.put(ck, it) }
         }
     }
 
-    private fun render(key: String, shape: IconShape, px: Int, pack: String?): ImageBitmap? {
+    private fun render(key: String, shape: IconShape, px: Int, pack: String?, mode: IconMode): ImageBitmap? {
         val info = apps.info(key) ?: return null
         val density = context.resources.displayMetrics.densityDpi
         val packDrawable = pack?.let {
@@ -162,13 +169,66 @@ class IconLoader(private val context: Context, private val apps: AppsRepository,
             null
         } ?: return null
         return try {
-            drawableToBitmap(d, shape, px, isPackIcon = packDrawable != null).asImageBitmap()
+            when (mode.kind) {
+                IconMode.Kind.NORMAL -> drawableToBitmap(d, shape, px, isPackIcon = packDrawable != null)
+                IconMode.Kind.THEMED -> themedBitmap(d, shape, px, mode) ?: drawableToBitmap(d, shape, px, isPackIcon = packDrawable != null)
+                IconMode.Kind.MONO -> monoBitmap(d, px, mode)
+            }.asImageBitmap()
         } catch (e: Exception) {
             null
         }
     }
 
     companion object {
+        private fun monochromeLayer(d: Drawable): Drawable? =
+            if (android.os.Build.VERSION.SDK_INT >= 33 && d is AdaptiveIconDrawable) d.monochrome else null
+
+        /** Android 13 themed icon: the app's monochrome layer tinted, on a tonal background. */
+        fun themedBitmap(d: Drawable, shape: IconShape, px: Int, mode: IconMode): Bitmap? {
+            val mono = monochromeLayer(d) ?: return null
+            val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+            val c = Canvas(bmp)
+            val s = px.toFloat()
+            c.save()
+            c.clipPath(IconShapes.path(if (shape == IconShape.ORIGINAL) IconShape.CIRCLE else shape, s))
+            c.drawColor(mode.bg)
+            val inset = (px / 4f).toInt()
+            mono.mutate().setTint(mode.fg)
+            mono.setBounds(-inset, -inset, px + inset, px + inset)
+            mono.draw(c)
+            c.restore()
+            return bmp
+        }
+
+        /** Minimal style: monochrome layer in one colour, or a desaturated original icon. */
+        fun monoBitmap(d: Drawable, px: Int, mode: IconMode): Bitmap {
+            val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+            val c = Canvas(bmp)
+            val mono = monochromeLayer(d)
+            if (mono != null) {
+                val inset = (px / 4f).toInt()
+                mono.mutate().setTint(mode.fg)
+                mono.setBounds(-inset, -inset, px + inset, px + inset)
+                mono.draw(c)
+            } else {
+                val cm = android.graphics.ColorMatrix().apply { setSaturation(0f) }
+                val copy = d.constantState?.newDrawable()?.mutate() ?: d.mutate()
+                copy.colorFilter = android.graphics.ColorMatrixColorFilter(cm)
+                if (copy is AdaptiveIconDrawable) {
+                    c.save()
+                    c.clipPath(IconShapes.path(IconShape.CIRCLE, px.toFloat()))
+                    val inset = (px / 4f).toInt()
+                    copy.background?.let { it.colorFilter = android.graphics.ColorMatrixColorFilter(cm); it.setBounds(-inset, -inset, px + inset, px + inset); it.draw(c) }
+                    copy.foreground?.let { it.colorFilter = android.graphics.ColorMatrixColorFilter(cm); it.setBounds(-inset, -inset, px + inset, px + inset); it.draw(c) }
+                    c.restore()
+                } else {
+                    copy.setBounds(0, 0, px, px)
+                    copy.draw(c)
+                }
+            }
+            return bmp
+        }
+
         fun drawableToBitmap(d: Drawable, shape: IconShape, px: Int, isPackIcon: Boolean = false): Bitmap {
             val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
             val c = Canvas(bmp)

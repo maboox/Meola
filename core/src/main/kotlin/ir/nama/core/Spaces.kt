@@ -9,10 +9,8 @@ import kotlin.math.sqrt
 
 @Serializable
 enum class StyleId(val fa: String, val en: String) {
-    GLASS("شیشه‌ای مدرن", "Modern glass"),
-    MINIMAL("مینیمال آرام", "Calm minimal"),
-    DASHBOARD("داشبوردی", "Dashboard"),
-    PERSIAN("ایرانیِ مدرن", "Modern Persian")
+    DEFAULT("پیش‌فرض", "Default"),
+    MINIMAL("مینیمال", "Minimal")
 }
 
 @Serializable

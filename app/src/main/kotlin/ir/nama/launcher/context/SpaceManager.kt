@@ -50,7 +50,7 @@ class SpaceManager(private val store: Store, snapshot: StateFlow<ContextSnapshot
                 Space(
                     id(), "شرکت", "💼", priority = 30, matchAll = false,
                     triggers = listOf(Trigger.Time(8 * 60, 17 * 60, WEEKDAYS)),
-                    overrides = SpaceOverrides(style = StyleId.DASHBOARD, hiddenCategories = setOf(AppCategory.GAMES)),
+                    overrides = SpaceOverrides(hiddenCategories = setOf(AppCategory.GAMES)),
                     preset = "work"
                 )
             },
@@ -110,7 +110,7 @@ class SpaceManager(private val store: Store, snapshot: StateFlow<ContextSnapshot
                 Space(
                     id(), "ماه رمضان", "☪", priority = 60,
                     triggers = listOf(Trigger.Ramadan),
-                    overrides = SpaceOverrides(style = StyleId.PERSIAN),
+                    overrides = SpaceOverrides(),
                     preset = "ramadan"
                 )
             },
@@ -135,7 +135,7 @@ class SpaceManager(private val store: Store, snapshot: StateFlow<ContextSnapshot
                     id(), "کودک", "🧸", priority = 0,
                     triggers = emptyList(),
                     overrides = SpaceOverrides(
-                        style = StyleId.DASHBOARD, locked = true,
+                        locked = true,
                         allowOnlyCategories = setOf(AppCategory.GAMES, AppCategory.EDUCATION),
                         hideNews = true
                     ),
@@ -158,7 +158,7 @@ class SpaceManager(private val store: Store, snapshot: StateFlow<ContextSnapshot
                 Space(
                     id(), "سفر", "🧳", priority = 25,
                     triggers = emptyList(),
-                    overrides = SpaceOverrides(style = StyleId.GLASS),
+                    overrides = SpaceOverrides(),
                     preset = "travel"
                 )
             }

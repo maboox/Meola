@@ -114,7 +114,7 @@ class SettingsActivity : AppCompatActivity() {
         val start = intent.getStringExtra("route") ?: "main"
         setContent {
             val settings by Nama.store.settings.flow.collectAsState()
-            NamaAppTheme(dark = isSystemInDarkTheme(), rtl = settings.language != "en") {
+            NamaAppTheme(rtl = settings.language != "en", minimal = settings.style == StyleId.MINIMAL) {
                 @Suppress("UNUSED_VARIABLE") val tick = recompose.value
                 SettingsRoot(start, this)
             }
@@ -287,15 +287,15 @@ private fun AppearanceScreen() {
     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
         header(tr("سبک", "Style"))
         item { ChoiceItem(tr("سبک پایه", "Base style"), StyleId.entries, s.style, { tr(it.fa, it.en) }) { v -> upd { it.copy(style = v) } } }
-        item { SwitchItem(tr("والپیپر خود گوشی", "Use phone wallpaper"), tr("به جای پس‌زمینه مخصوص سبک", "Instead of the style's own background"), s.useSystemWallpaper) { v -> upd { it.copy(useSystemWallpaper = v) } } }
-        item { SwitchItem(tr("تم‌های مناسبتی", "Occasion themes"), tr("نوروز، یلدا، رمضان، محرم", "Nowruz, Yalda, Ramadan, Muharram"), s.seasonalThemes) { v -> upd { it.copy(seasonalThemes = v) } } }
+        item { SwitchItem(tr("آیکون‌های هم‌رنگ", "Themed icons"), tr("آیکون‌ها با رنگ والپیپر (برنامه‌هایی که پشتیبانی کنند)", "Icons tinted from the wallpaper (apps that support it)"), s.themedIcons) { v -> upd { it.copy(themedIcons = v) }; Nama.icons.clear() } }
         header(tr("آیکون‌ها", "Icons"))
         item {
             val opts = listOf<IconShape?>(null) + IconShape.entries
-            ChoiceItem(tr("شکل آیکون", "Icon shape"), opts, s.iconShape, { it?.let { sh -> tr(sh.fa, sh.en) } ?: tr("پیش‌فرض سبک", "Style default") }) { v -> upd { it.copy(iconShape = v) }; Nama.icons.clear() }
+            ChoiceItem(tr("شکل آیکون", "Icon shape"), opts, s.iconShape, { it?.let { sh -> tr(sh.fa, sh.en) } ?: tr("پیش‌فرض (دایره)", "Default (circle)") }) { v -> upd { it.copy(iconShape = v) }; Nama.icons.clear() }
         }
         item { SliderItem(tr("اندازه آیکون", "Icon size"), s.iconSizeDp, 36..72, 2) { v -> upd { it.copy(iconSizeDp = v) } } }
-        item { SliderItem(tr("تعداد ستون", "Columns"), s.columns, 3..6) { v -> upd { it.copy(columns = v) } } }
+        item { SliderItem(tr("تعداد ستون صفحه اصلی", "Home columns"), s.columns.coerceIn(4, 5), 4..5) { v -> upd { it.copy(columns = v) } } }
+        item { SliderItem(tr("تعداد ردیف صفحه اصلی", "Home rows"), s.rows.coerceIn(5, 7), 5..7) { v -> upd { it.copy(rows = v) } } }
         item { SwitchItem(tr("نام زیر آیکون", "Labels"), null, s.showLabels) { v -> upd { it.copy(showLabels = v) } } }
         item { SwitchItem(tr("نقطه اعلان روی آیکون", "Notification dots"), tr("نیاز به دسترسی اعلان‌ها", "Needs notification access"), s.showNotificationDots) { v -> upd { it.copy(showNotificationDots = v) } } }
         item {
@@ -324,7 +324,7 @@ private fun HomeSettingsScreen() {
         header(tr("صفحه اصلی", "Home"))
         item { SwitchItem(tr("صفحه اخبار", "News page"), tr("با کشیدن از صفحه اول", "Swipe from the first page"), s.newsPageEnabled) { v -> upd { it.copy(newsPageEnabled = v) } } }
         item { SwitchItem(tr("نشان دادن فضای فعال", "Show the active space"), null, s.showSpaceBanner) { v -> upd { it.copy(showSpaceBanner = v) } } }
-        item { SwitchItem(tr("صندوق برنامه‌های تازه", "New apps inbox"), tr("برنامه تازه نصب‌شده با پیشنهاد جا", "New apps with a suggested place"), s.autoInboxNewApps) { v -> upd { it.copy(autoInboxNewApps = v) } } }
+        item { SwitchItem(tr("برنامه‌های تازه روی صفحه اصلی", "New apps on home screen"), tr("آیکون برنامه تازه نصب‌شده به صفحه اضافه شود", "Add an icon when an app is installed"), s.autoInboxNewApps) { v -> upd { it.copy(autoInboxNewApps = v) } } }
         item { SwitchItem(tr("ساعت هنگام شارژ", "Clock while charging"), tr("وقتی شارژر وصل شد و روی صفحه اصلی هستی", "When charging on the home screen"), s.chargingClock) { v -> upd { it.copy(chargingClock = v) } } }
         item { SwitchItem(tr("حالت اینترنت ملی", "National internet mode"), tr("قطع اینترنت بین‌الملل را تشخیص بده و برنامه‌های خارجی را کم‌رنگ کن", "Detect international outages and dim foreign apps"), s.nationalNetMode) { v -> upd { it.copy(nationalNetMode = v) } } }
         item { ChoiceItem(tr("موتور جستجوی وب", "Web search engine"), SearchEngine.entries, s.searchEngine, { it.fa }) { v -> upd { it.copy(searchEngine = v) } } }
@@ -453,7 +453,6 @@ private fun SpaceEditScreen(id: String, activity: SettingsActivity, onDeleted: (
             val opts = listOf<StyleId?>(null) + StyleId.entries
             ChoiceItem(tr("سبک", "Style"), opts, o.style, { it?.let { st -> tr(st.fa, st.en) } ?: tr("مثل پایه", "Same as base") }) { v -> saveO { it.copy(style = v) } }
         }
-        item { SwitchItem(tr("تیره‌تر", "Darker"), null, o.darkTint) { v -> saveO { it.copy(darkTint = v) } } }
         item { SwitchItem(tr("بدون انیمیشن", "No animations"), null, o.reduceMotion) { v -> saveO { it.copy(reduceMotion = v) } } }
         item {
             Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
@@ -645,7 +644,7 @@ private fun RulesScreen() {
         tr("مرتب‌سازی خودکار", "Auto-sort"), tr("صفحه‌های بعد از صفحه اول بازچینی می‌شوند. از تاریخچه چیدمان قابل برگشت است.", "Pages after page 1 are rebuilt. Undo from layout history."),
         tr("مرتب کن", "Sort"), {
             scope.launch {
-                val r = SmartSort.plan(Nama.store.layout.value, apps, Nama.usage.lastUsed())
+                val r = SmartSort.plan(Nama.store.layout.value, apps, Nama.usage.lastUsed(), Nama.settings.columns.coerceIn(4, 5), Nama.settings.rows.coerceIn(5, 7))
                 r.prefChanges.forEach { (k, f) -> Nama.store.updatePref(k, f) }
                 Nama.store.changeLayout(tr("مرتب‌سازی خودکار", "Auto-sort")) { r.layout }
                 Actions.toast(ctx, tr("${num(r.folders)} پوشه ساخته شد", "${r.folders} folders made"))
@@ -1108,7 +1107,7 @@ private fun SafetyScreen(activity: SettingsActivity) {
     when (confirm) {
         1 -> ConfirmDialog(tr("بازسازی چیدمان", "Rebuild layout"), tr("چیدمان تازه ساخته می‌شود؛ از تاریخچه قابل برگشت است.", "A new layout is built; undo from history."), tr("بساز", "Build"), {
             val s = Nama.settings
-            Nama.store.changeLayout(tr("بازسازی چیدمان", "Rebuild")) { Templates.initialLayout(Nama.apps.apps.value, s.persona, s.interests, s.style) }
+            Nama.store.changeLayout(tr("بازسازی چیدمان", "Rebuild")) { Templates.initialLayout(Nama.apps.apps.value, s.persona, s.interests, s.style, s.columns.coerceIn(4, 5), s.rows.coerceIn(5, 7)) }
         }, { confirm = 0 })
         2 -> ConfirmDialog(tr("بازنشانی کامل", "Full reset"), tr("مطمئنی؟ این کار برگشت ندارد.", "Are you sure? This cannot be undone."), tr("پاک کن", "Erase"), {
             Nama.store.settings.set(ir.nama.launcher.data.Settings())

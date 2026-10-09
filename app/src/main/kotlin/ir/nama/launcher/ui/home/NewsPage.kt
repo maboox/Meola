@@ -1,38 +1,27 @@
 package ir.nama.launcher.ui.home
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Bookmark
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Spa
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ir.nama.core.NewsFilter
 import ir.nama.core.NewsItem
 import ir.nama.core.NewsLogic
@@ -40,7 +29,6 @@ import ir.nama.launcher.Nama
 import ir.nama.launcher.num
 import ir.nama.launcher.system.Actions
 import ir.nama.launcher.tr
-import ir.nama.launcher.ui.theme.LocalNamaStyle
 import java.time.LocalTime
 
 /** Is "calm news" on right now (always, at night, or because the active space asks for it)? */
@@ -59,13 +47,13 @@ fun visibleNews(items: List<NewsItem>, env: HomeEnv): List<NewsItem> =
 
 @Composable
 fun NewsPage(ctrl: HomeController, env: HomeEnv) {
-    val s = LocalNamaStyle.current
     val ctx = LocalContext.current
-    val items by Nama.news.items.collectAsState()
-    val loading by Nama.news.loading.collectAsState()
-    val personal by Nama.store.personal.flow.collectAsState()
+    val cs = MaterialTheme.colorScheme
+    val items by Nama.news.items.collectAsStateWithLifecycle()
+    val loading by Nama.news.loading.collectAsStateWithLifecycle()
+    val personal by Nama.store.personal.flow.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { Nama.news.refreshIfStale() }
-    var tab by remember { mutableStateOf("all") }
+    var tab by remember { mutableStateOf("digest") }
     val calm = calmNow(env)
     val filtered = remember(items, env.settings, calm) { visibleNews(items, env) }
     val shown = when (tab) {
@@ -76,69 +64,60 @@ fun NewsPage(ctrl: HomeController, env: HomeEnv) {
     }
     val cats = remember(filtered) { filtered.map { it.category }.distinct() }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(tr("اخبار", "News"), color = s.text, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            if (calm) Text(tr("🕊 حالت آرامش", "🕊 Calm"), color = s.accent, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp))
-            Text(
-                if (loading) "…" else "⟳", color = s.subText, fontSize = 20.sp,
-                modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { Nama.news.refreshIfStale(0) }.padding(8.dp)
-            )
+    Column(
+        Modifier.fillMaxSize().padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 4.dp)
+            .clip(RoundedCornerShape(28.dp)).background(cs.surfaceContainerLow)
+    ) {
+        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("اخبار", "News"), style = MaterialTheme.typography.headlineSmall, color = cs.onSurface, modifier = Modifier.weight(1f))
+            if (calm) AssistChip({}, label = { Text(tr("آرام", "Calm")) }, leadingIcon = { Icon(Icons.Outlined.Spa, null, Modifier.size(16.dp)) })
+            IconButton({ Nama.news.refreshIfStale(0) }, enabled = !loading) {
+                if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                else Icon(Icons.Outlined.Refresh, tr("تازه کردن", "Refresh"), tint = cs.onSurfaceVariant)
+            }
         }
         val tabs = listOf("digest" to tr("خلاصه", "Digest"), "all" to tr("همه", "All")) +
             cats.map { it.name to tr(it.fa, it.en) } + ("saved" to tr("ذخیره‌شده", "Saved"))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(tabs) { (id, label) ->
-                val sel = id == tab
-                Text(
-                    label, color = if (sel) s.accent else s.text, fontSize = 13.sp,
-                    modifier = Modifier.clip(RoundedCornerShape(16.dp))
-                        .background(if (sel) s.accent.copy(alpha = 0.16f) else s.card)
-                        .border(1.dp, if (sel) s.accent else s.cardBorder, RoundedCornerShape(16.dp))
-                        .clickable { tab = id }.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
-            }
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(tabs, key = { it.first }) { (id, label) -> FilterChip(id == tab, { tab = id }, label = { Text(label) }) }
         }
         if (Nama.news.enabledSources().isEmpty()) {
-            Text(tr("هیچ منبع خبری فعال نیست. از تنظیمات نما › اخبار منبع انتخاب کنید.", "No news sources enabled. Pick some in Nama settings › News."), color = s.subText, modifier = Modifier.padding(16.dp))
+            Text(tr("هیچ منبع خبری فعال نیست. از تنظیمات نما › اخبار منبع انتخاب کنید.", "No news sources enabled. Pick some in Nama settings › News."), color = cs.onSurfaceVariant, modifier = Modifier.padding(20.dp))
         } else if (shown.isEmpty()) {
             Text(
                 if (loading) tr("در حال دریافت خبرها…", "Fetching news…")
                 else tr("خبری نیست. اگر اینترنت وصل است، منبع‌ها را در تنظیمات بررسی کنید.", "Nothing here. Check your sources in settings."),
-                color = s.subText, modifier = Modifier.padding(16.dp)
+                color = cs.onSurfaceVariant, modifier = Modifier.padding(20.dp)
             )
         }
-        LazyColumn(contentPadding = PaddingValues(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(shown, key = { it.id }) { n ->
                 val saved = personal.readLater.any { it.id == n.id }
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(s.cardRadius)).background(s.card)
-                        .border(1.dp, s.cardBorder, RoundedCornerShape(s.cardRadius))
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cs.surfaceContainerHigh)
                         .combinedClickable(
                             onClick = { Actions.openUrl(ctx, n.link) },
                             onLongClick = { Actions.share(ctx, n.title + "\n" + n.link) }
-                        ).padding(12.dp)
+                        ).padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 14.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(n.sourceName + " · " + ago(n.publishedAt), color = s.subText, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                        Text(
-                            if (saved) "★" else "☆", color = if (saved) s.accent2 else s.subText, fontSize = 18.sp,
-                            modifier = Modifier.clickable {
-                                Nama.store.personal.update { p ->
-                                    p.copy(readLater = if (saved) p.readLater.filterNot { it.id == n.id } else (listOf(n) + p.readLater).take(100))
-                                }
-                            }.padding(4.dp)
-                        )
+                        Text(n.sourceName + " · " + ago(n.publishedAt), style = MaterialTheme.typography.labelMedium, color = cs.primary, modifier = Modifier.weight(1f))
+                        IconButton({
+                            Nama.store.personal.update { p ->
+                                p.copy(readLater = if (saved) p.readLater.filterNot { it.id == n.id } else (listOf(n) + p.readLater).take(100))
+                            }
+                        }, modifier = Modifier.size(36.dp)) {
+                            Icon(if (saved) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder, tr("ذخیره", "Save"), tint = if (saved) cs.primary else cs.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                        }
                     }
-                    Text(n.title, color = s.text, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(n.title, style = MaterialTheme.typography.titleMedium, color = cs.onSurface, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(end = 10.dp))
                     if (n.summary.isNotBlank() && tab != "digest") {
-                        Spacer(Modifier.width(4.dp))
-                        Text(n.summary, color = s.subText, fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Text(n.summary, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp, end = 10.dp))
                     }
                 }
             }
             if (shown.isNotEmpty()) item {
-                Text(tr("${num(shown.size)} خبر · لمس طولانی برای اشتراک", "${shown.size} stories · long press to share"), color = s.subText, fontSize = 11.sp, modifier = Modifier.padding(8.dp))
+                Text(tr("${num(shown.size)} خبر · لمس طولانی برای اشتراک", "${shown.size} stories · long press to share"), style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant, modifier = Modifier.padding(8.dp))
             }
         }
     }

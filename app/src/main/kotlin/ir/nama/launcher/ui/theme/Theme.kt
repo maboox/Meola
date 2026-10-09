@@ -1,27 +1,28 @@
 package ir.nama.launcher.ui.theme
 
+import android.app.WallpaperColors
 import android.app.WallpaperManager
 import android.content.Context
 import android.os.Build
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -30,12 +31,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import ir.nama.core.IranCalendar
 import ir.nama.core.StyleId
 import ir.nama.launcher.R
-import ir.nama.launcher.data.IconShape
-import kotlin.math.cos
-import kotlin.math.sin
 
 val Vazir = FontFamily(
     Font(R.font.vazirmatn_extralight, FontWeight.ExtraLight),
@@ -44,125 +43,105 @@ val Vazir = FontFamily(
     Font(R.font.vazirmatn_medium, FontWeight.Medium),
     Font(R.font.vazirmatn_bold, FontWeight.Bold)
 )
-val Lalezar = FontFamily(Font(R.font.lalezar, FontWeight.Normal))
 
+/** Colours and shapes the home screen uses, derived from the Material colour scheme. */
 @Immutable
 data class NamaStyle(
     val id: StyleId,
-    val dark: Boolean,
-    val text: Color,
-    val subText: Color,
-    val card: Color,
-    val cardBorder: Color,
+    /** Text drawn directly on the wallpaper (labels, glance). */
+    val onWallpaper: Color,
+    val onWallpaperSub: Color,
+    val textShadow: Shadow?,
+    /** Widget cards. */
+    val surface: Color,
+    val surfaceHigh: Color,
+    val onSurface: Color,
+    val onSurfaceVariant: Color,
     val accent: Color,
-    val accent2: Color,
+    val accentContainer: Color,
+    val onAccentContainer: Color,
+    val outline: Color,
     val danger: Color,
     val success: Color,
-    val iconLabel: Color,
-    val defaultShape: IconShape,
-    val clockFont: FontFamily,
-    val cardRadius: Dp,
-    /** Minimal style shows apps as a text list. */
-    val textOnly: Boolean,
-    val background: Brush?,
-    val pattern: Boolean,
-    val scrim: Color
-)
-
-object Styles {
-    fun build(id: StyleId, wallpaperAccent: Color?, useSystemWallpaper: Boolean, darkTint: Boolean): NamaStyle = when (id) {
-        StyleId.GLASS -> NamaStyle(
-            id = id, dark = true,
-            text = Color.White, subText = Color.White.copy(alpha = 0.78f),
-            card = Color.White.copy(alpha = 0.16f), cardBorder = Color.White.copy(alpha = 0.24f),
-            accent = wallpaperAccent ?: Color(0xFFFFB36B), accent2 = Color(0xFF7FE0D6),
-            danger = Color(0xFFFF8A80), success = Color(0xFFA5F2B4), iconLabel = Color.White,
-            defaultShape = IconShape.SQUIRCLE, clockFont = Vazir, cardRadius = 22.dp, textOnly = false,
-            background = if (useSystemWallpaper) null else Brush.verticalGradient(
-                listOf(Color(0xFF1E5A63), Color(0xFF123C4A), Color(0xFF0B2530))
-            ),
-            pattern = false,
-            scrim = if (darkTint) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.12f)
-        )
-        StyleId.MINIMAL -> NamaStyle(
-            id = id, dark = true,
-            text = Color(0xFFE9ECE9), subText = Color(0xFF8C948F),
-            card = Color.Transparent, cardBorder = Color(0xFF2A302C),
-            accent = Color(0xFF9AD1C3), accent2 = Color(0xFFC9D1CB),
-            danger = Color(0xFFE57373), success = Color(0xFF9AD1C3), iconLabel = Color(0xFFE9ECE9),
-            defaultShape = IconShape.CIRCLE, clockFont = Vazir, cardRadius = 14.dp, textOnly = true,
-            background = if (useSystemWallpaper) null else Brush.verticalGradient(listOf(Color(0xFF0D0F0E), Color(0xFF0D0F0E))),
-            pattern = false,
-            scrim = Color.Black.copy(alpha = if (useSystemWallpaper) 0.72f else 0f)
-        )
-        StyleId.DASHBOARD -> NamaStyle(
-            id = id, dark = darkTint,
-            text = if (darkTint) Color(0xFFE6EAE7) else Color(0xFF1F2522),
-            subText = if (darkTint) Color(0xFF9AA5A1) else Color(0xFF66706B),
-            card = if (darkTint) Color(0xFF1B2120) else Color.White,
-            cardBorder = if (darkTint) Color(0xFF2B3331) else Color(0xFFE1E5E2),
-            accent = Color(0xFF0F7C79), accent2 = Color(0xFFE08A2E),
-            danger = Color(0xFFC0392B), success = Color(0xFF1E8A4C),
-            iconLabel = if (darkTint) Color(0xFFE6EAE7) else Color(0xFF1F2522),
-            defaultShape = IconShape.ROUNDED, clockFont = Vazir, cardRadius = 16.dp, textOnly = false,
-            background = if (useSystemWallpaper) null else Brush.verticalGradient(
-                if (darkTint) listOf(Color(0xFF131716), Color(0xFF131716)) else listOf(Color(0xFFECEEE9), Color(0xFFE6E9E3))
-            ),
-            pattern = false,
-            scrim = if (useSystemWallpaper) (if (darkTint) Color.Black.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.55f)) else Color.Transparent
-        )
-        StyleId.PERSIAN -> NamaStyle(
-            id = id, dark = true,
-            text = Color(0xFFF3EAD7), subText = Color(0xFFD9CFB8),
-            card = Color(0xFF09142C).copy(alpha = 0.58f), cardBorder = Color(0xFFD4AF6A).copy(alpha = 0.38f),
-            accent = Color(0xFF5FD0C6), accent2 = Color(0xFFF1D48F),
-            danger = Color(0xFFFF9C8A), success = Color(0xFF8EE3B0), iconLabel = Color(0xFFE9E0CA),
-            defaultShape = IconShape.ARCH, clockFont = Lalezar, cardRadius = 16.dp, textOnly = false,
-            background = if (useSystemWallpaper) null else Brush.verticalGradient(
-                listOf(Color(0xFF1C3A73), Color(0xFF10224A), Color(0xFF0B1834))
-            ),
-            pattern = true,
-            scrim = if (darkTint) Color.Black.copy(alpha = 0.45f) else if (useSystemWallpaper) Color(0xFF0B1834).copy(alpha = 0.55f) else Color.Transparent
-        )
-    }
-
-    /** Seasonal accent for Persian occasions. */
-    fun seasonal(base: NamaStyle, occasion: IranCalendar.Occasion): NamaStyle = when (occasion) {
-        IranCalendar.Occasion.NOWRUZ -> base.copy(accent = Color(0xFF7BC67B))
-        IranCalendar.Occasion.YALDA -> base.copy(accent = Color(0xFFE0544B), accent2 = Color(0xFFF1D48F))
-        IranCalendar.Occasion.RAMADAN -> base.copy(accent2 = Color(0xFFF1D48F))
-        IranCalendar.Occasion.CHAHARSHANBE_SURI -> base.copy(accent = Color(0xFFFF9F43))
-        IranCalendar.Occasion.MUHARRAM -> base.copy(accent = Color(0xFF7FA38F), accent2 = Color(0xFFB8B8B8))
-        IranCalendar.Occasion.NONE -> base
-    }
-
-    fun wallpaperAccent(context: Context): Color? = try {
-        if (Build.VERSION.SDK_INT >= 27) {
-            val c = WallpaperManager.getInstance(context).getWallpaperColors(WallpaperManager.FLAG_SYSTEM)
-            c?.primaryColor?.toArgb()?.let { argb ->
-                val col = Color(argb)
-                // Keep it light enough to read on dark glass.
-                val lum = 0.299f * col.red + 0.587f * col.green + 0.114f * col.blue
-                if (lum < 0.45f) Color(
-                    red = (col.red + 0.5f).coerceAtMost(1f), green = (col.green + 0.5f).coerceAtMost(1f),
-                    blue = (col.blue + 0.5f).coerceAtMost(1f)
-                ) else col
-            }
-        } else null
-    } catch (e: Exception) {
-        null
-    }
-
-    fun occasionGreeting(o: IranCalendar.Occasion, fa: Boolean): String? = when (o) {
-        IranCalendar.Occasion.NOWRUZ -> if (fa) "🌱 نوروزتان پیروز" else "🌱 Happy Nowruz"
-        IranCalendar.Occasion.YALDA -> if (fa) "🍉 شب یلدا مبارک" else "🍉 Happy Yalda"
-        IranCalendar.Occasion.RAMADAN -> if (fa) "🌙 ماه رمضان" else "🌙 Ramadan"
-        IranCalendar.Occasion.CHAHARSHANBE_SURI -> if (fa) "🔥 چهارشنبه‌سوری" else "🔥 Chaharshanbe Suri"
-        IranCalendar.Occasion.MUHARRAM, IranCalendar.Occasion.NONE -> null
-    }
+    val warning: Color,
+    /** Solid background (minimal) or null to show the wallpaper. */
+    val background: Color?,
+    val corner: Dp,
+    /** True when the status bar icons should be light. */
+    val lightContentOnWallpaper: Boolean
+) {
+    val minimal get() = id == StyleId.MINIMAL
 }
 
-val LocalNamaStyle = staticCompositionLocalOf { Styles.build(StyleId.PERSIAN, null, false, false) }
+val LocalNamaStyle = staticCompositionLocalOf {
+    buildStyle(StyleId.DEFAULT, fallbackScheme(true), darkTextOnWallpaper = false)
+}
+
+fun fallbackScheme(dark: Boolean): ColorScheme = if (dark) darkColorScheme(
+    primary = Color(0xFF7FD3CB), onPrimary = Color(0xFF00201E), primaryContainer = Color(0xFF1E4D49), onPrimaryContainer = Color(0xFFA6F0E7),
+    secondary = Color(0xFFB1CCC7), secondaryContainer = Color(0xFF324B48), onSecondaryContainer = Color(0xFFCDE8E3),
+    tertiary = Color(0xFFE8C08A), background = Color(0xFF0F1514), surface = Color(0xFF0F1514),
+    surfaceContainerLowest = Color(0xFF0A0F0E), surfaceContainerLow = Color(0xFF171D1C), surfaceContainer = Color(0xFF1B2120),
+    surfaceContainerHigh = Color(0xFF252B2A), surfaceContainerHighest = Color(0xFF303635),
+    onSurface = Color(0xFFDEE4E2), onSurfaceVariant = Color(0xFFBEC9C6), outline = Color(0xFF889391), outlineVariant = Color(0xFF3F4947)
+) else lightColorScheme(
+    primary = Color(0xFF006A64), onPrimary = Color.White, primaryContainer = Color(0xFF9EF2E8), onPrimaryContainer = Color(0xFF00201E),
+    secondary = Color(0xFF4A6360), secondaryContainer = Color(0xFFCCE8E3), onSecondaryContainer = Color(0xFF051F1D),
+    tertiary = Color(0xFF7A5726), background = Color(0xFFF5FAF8), surface = Color(0xFFF5FAF8),
+    surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFEFF5F3), surfaceContainer = Color(0xFFE9EFED),
+    surfaceContainerHigh = Color(0xFFE3EAE7), surfaceContainerHighest = Color(0xFFDDE4E2),
+    onSurface = Color(0xFF171D1C), onSurfaceVariant = Color(0xFF3F4947), outline = Color(0xFF6F7977), outlineVariant = Color(0xFFBEC9C6)
+)
+
+/** Material You colours from the wallpaper on Android 12+, a calm teal palette before that. */
+fun namaColorScheme(context: Context, dark: Boolean): ColorScheme =
+    if (Build.VERSION.SDK_INT >= 31) {
+        try { if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context) } catch (e: Exception) { fallbackScheme(dark) }
+    } else fallbackScheme(dark)
+
+val MinimalScheme: ColorScheme = darkColorScheme(
+    primary = Color(0xFFE6E6E6), onPrimary = Color.Black, primaryContainer = Color(0xFF2A2A2A), onPrimaryContainer = Color(0xFFEDEDED),
+    secondary = Color(0xFFBDBDBD), secondaryContainer = Color(0xFF262626), onSecondaryContainer = Color(0xFFE0E0E0),
+    background = Color.Black, surface = Color.Black,
+    surfaceContainerLowest = Color.Black, surfaceContainerLow = Color(0xFF0C0C0C), surfaceContainer = Color(0xFF121212),
+    surfaceContainerHigh = Color(0xFF1A1A1A), surfaceContainerHighest = Color(0xFF222222),
+    onSurface = Color(0xFFEDEDED), onSurfaceVariant = Color(0xFF9E9E9E), outline = Color(0xFF5E5E5E), outlineVariant = Color(0xFF2E2E2E)
+)
+
+/** Whether the wallpaper is light enough that dark text reads better on it. */
+fun wallpaperPrefersDarkText(context: Context): Boolean = try {
+    if (Build.VERSION.SDK_INT >= 27) {
+        val c = WallpaperManager.getInstance(context).getWallpaperColors(WallpaperManager.FLAG_SYSTEM)
+        c != null && (c.colorHints and WallpaperColors.HINT_SUPPORTS_DARK_TEXT) != 0
+    } else false
+} catch (e: Exception) {
+    false
+}
+
+fun buildStyle(id: StyleId, scheme: ColorScheme, darkTextOnWallpaper: Boolean): NamaStyle = when (id) {
+    StyleId.MINIMAL -> NamaStyle(
+        id = id,
+        onWallpaper = Color(0xFFEDEDED), onWallpaperSub = Color(0xFF8A8A8A), textShadow = null,
+        surface = Color.Transparent, surfaceHigh = Color(0xFF141414),
+        onSurface = Color(0xFFEDEDED), onSurfaceVariant = Color(0xFF8A8A8A),
+        accent = Color(0xFFEDEDED), accentContainer = Color(0xFF1F1F1F), onAccentContainer = Color(0xFFEDEDED),
+        outline = Color(0xFF2A2A2A), danger = Color(0xFFEF9A9A), success = Color(0xFFA5D6A7), warning = Color(0xFFFFCC80),
+        background = Color.Black, corner = 20.dp, lightContentOnWallpaper = true
+    )
+    StyleId.DEFAULT -> NamaStyle(
+        id = id,
+        onWallpaper = if (darkTextOnWallpaper) Color(0xFF1B1B1B) else Color.White,
+        onWallpaperSub = if (darkTextOnWallpaper) Color(0xFF3A3A3A) else Color.White.copy(alpha = 0.86f),
+        textShadow = if (darkTextOnWallpaper) null else Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 1.5f), 6f),
+        surface = scheme.surfaceContainer.copy(alpha = 0.96f),
+        surfaceHigh = scheme.surfaceContainerHighest,
+        onSurface = scheme.onSurface, onSurfaceVariant = scheme.onSurfaceVariant,
+        accent = scheme.primary, accentContainer = scheme.primaryContainer, onAccentContainer = scheme.onPrimaryContainer,
+        outline = scheme.outlineVariant,
+        danger = scheme.error, success = Color(0xFF2E9E5B), warning = Color(0xFFE08A2E),
+        background = null, corner = 24.dp, lightContentOnWallpaper = !darkTextOnWallpaper
+    )
+}
 
 fun namaTypography(): Typography {
     val base = Typography()
@@ -170,42 +149,23 @@ fun namaTypography(): Typography {
     return Typography(
         displayLarge = base.displayLarge.v(), displayMedium = base.displayMedium.v(), displaySmall = base.displaySmall.v(),
         headlineLarge = base.headlineLarge.v(), headlineMedium = base.headlineMedium.v(), headlineSmall = base.headlineSmall.v(),
-        titleLarge = base.titleLarge.v(), titleMedium = base.titleMedium.v(), titleSmall = base.titleSmall.v(),
+        titleLarge = base.titleLarge.v().copy(fontWeight = FontWeight.Bold), titleMedium = base.titleMedium.v().copy(fontWeight = FontWeight.Medium),
+        titleSmall = base.titleSmall.v(),
         bodyLarge = base.bodyLarge.v(), bodyMedium = base.bodyMedium.v(), bodySmall = base.bodySmall.v(),
         labelLarge = base.labelLarge.v(), labelMedium = base.labelMedium.v(), labelSmall = base.labelSmall.v()
     )
 }
 
-fun schemeFor(style: NamaStyle): ColorScheme = if (style.dark) darkColorScheme(
-    primary = style.accent, secondary = style.accent2, tertiary = style.accent2,
-    background = Color(0xFF121716), surface = Color(0xFF1A201F), surfaceVariant = Color(0xFF253030),
-    surfaceContainer = Color(0xFF1E2524), surfaceContainerHigh = Color(0xFF232B2A), surfaceContainerLow = Color(0xFF181E1D),
-    onPrimary = Color(0xFF0B1A19), onBackground = Color(0xFFE8ECEA), onSurface = Color(0xFFE8ECEA),
-    onSurfaceVariant = Color(0xFFB4C0BC), error = style.danger
-) else lightColorScheme(
-    primary = style.accent, secondary = style.accent2, tertiary = style.accent2,
-    background = Color(0xFFFAFAF8), surface = Color.White, surfaceVariant = Color(0xFFEEF1EE),
-    onPrimary = Color.White, onBackground = Color(0xFF1D2321), onSurface = Color(0xFF1D2321),
-    onSurfaceVariant = Color(0xFF55605B), error = style.danger
-)
-
-/** Theme for normal screens (settings, onboarding). */
+/** Theme for normal screens (settings, setup), with wallpaper colours when available. */
 @Composable
-fun NamaAppTheme(dark: Boolean, rtl: Boolean, content: @Composable () -> Unit) {
-    val style = Styles.build(if (dark) StyleId.MINIMAL else StyleId.DASHBOARD, null, false, dark)
-    val scheme = if (dark) darkColorScheme(
-        primary = Color(0xFF4CC3BD), secondary = Color(0xFFF1D48F), background = Color(0xFF121716),
-        surface = Color(0xFF1A201F), surfaceVariant = Color(0xFF253030), onPrimary = Color(0xFF062321),
-        surfaceContainer = Color(0xFF1E2524), surfaceContainerHigh = Color(0xFF232B2A), surfaceContainerLow = Color(0xFF181E1D)
-    ) else lightColorScheme(
-        primary = Color(0xFF0F7C79), secondary = Color(0xFFB07A22), background = Color(0xFFFAFAF8),
-        surface = Color.White, surfaceVariant = Color(0xFFEEF1EE), onPrimary = Color.White,
-        surfaceContainer = Color(0xFFF2F4F2), surfaceContainerHigh = Color(0xFFECEFEC), surfaceContainerLow = Color(0xFFF6F7F5)
-    )
-    val view = androidx.compose.ui.platform.LocalView.current
-    androidx.compose.runtime.SideEffect {
+fun NamaAppTheme(rtl: Boolean, minimal: Boolean = false, content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    val dark = minimal || isSystemInDarkTheme()
+    val scheme = if (minimal) MinimalScheme else namaColorScheme(context, dark)
+    val view = LocalView.current
+    SideEffect {
         (view.context as? android.app.Activity)?.window?.let { w ->
-            val c = androidx.core.view.WindowCompat.getInsetsController(w, view)
+            val c = WindowCompat.getInsetsController(w, view)
             c.isAppearanceLightStatusBars = !dark
             c.isAppearanceLightNavigationBars = !dark
         }
@@ -213,50 +173,24 @@ fun NamaAppTheme(dark: Boolean, rtl: Boolean, content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = scheme, typography = namaTypography()) {
         CompositionLocalProvider(
             LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr,
-            LocalNamaStyle provides style
+            LocalNamaStyle provides buildStyle(if (minimal) StyleId.MINIMAL else StyleId.DEFAULT, scheme, darkTextOnWallpaper = false)
         ) { content() }
     }
 }
 
-/** Paints the style background, the girih pattern for the Persian style, and a readability scrim. */
+object Occasions {
+    fun greeting(o: IranCalendar.Occasion, fa: Boolean): String? = when (o) {
+        IranCalendar.Occasion.NOWRUZ -> if (fa) "نوروزتان پیروز" else "Happy Nowruz"
+        IranCalendar.Occasion.YALDA -> if (fa) "شب یلدا مبارک" else "Happy Yalda"
+        IranCalendar.Occasion.RAMADAN -> if (fa) "ماه رمضان" else "Ramadan"
+        IranCalendar.Occasion.CHAHARSHANBE_SURI -> if (fa) "چهارشنبه‌سوری" else "Chaharshanbe Suri"
+        IranCalendar.Occasion.MUHARRAM, IranCalendar.Occasion.NONE -> null
+    }
+}
+
+/** Text style for text drawn straight on the wallpaper. */
 @Composable
-fun StyleBackground(style: NamaStyle, modifier: Modifier = Modifier) {
-    Box(
-        modifier
-            .fillMaxSize()
-            .then(if (style.background != null) Modifier.background(style.background) else Modifier)
-            .then(if (style.pattern) Modifier.girih(style.accent2.copy(alpha = 0.12f)) else Modifier)
-            .background(style.scrim)
-    )
+fun wallpaperText(size: Int, weight: FontWeight = FontWeight.Normal): TextStyle {
+    val s = LocalNamaStyle.current
+    return TextStyle(fontFamily = Vazir, fontSize = size.sp, fontWeight = weight, color = s.onWallpaper, shadow = s.textShadow)
 }
-
-/** Eight-point star lattice (a simple girih) drawn once per size. */
-fun Modifier.girih(color: Color, tile: Dp = 56.dp): Modifier = drawWithCache {
-    val t = tile.toPx()
-    val path = Path()
-    fun star(cx: Float, cy: Float, r: Float, inner: Float, rotate: Double) {
-        for (i in 0 until 16) {
-            val ang = rotate + i * Math.PI / 8
-            val rr = if (i % 2 == 0) r else inner
-            val x = cx + (rr * cos(ang)).toFloat()
-            val y = cy + (rr * sin(ang)).toFloat()
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-        }
-        path.close()
-    }
-    var y = 0f
-    while (y < size.height + t) {
-        var x = 0f
-        while (x < size.width + t) {
-            star(x + t / 2, y + t / 2, t * 0.40f, t * 0.17f, -Math.PI / 2)
-            path.moveTo(x, y); path.lineTo(x + t * 0.12f, y + t * 0.12f)
-            path.moveTo(x + t, y); path.lineTo(x + t * 0.88f, y + t * 0.12f)
-            x += t
-        }
-        y += t
-    }
-    val stroke = Stroke(width = 1.dp.toPx())
-    onDrawBehind { drawPath(path, color, style = stroke) }
-}
-
-val ClockStyle = TextStyle(fontFamily = Vazir, fontWeight = FontWeight.Light, fontSize = 56.sp)

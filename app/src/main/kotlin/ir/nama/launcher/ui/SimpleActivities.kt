@@ -85,7 +85,7 @@ class SafeModeActivity : Activity() {
             // Moves the saved layout aside (it is kept as a backup file), then restarts.
             try {
                 val dir = File(filesDir, "nama")
-                File(dir, "layout.json").takeIf { it.exists() }?.renameTo(File(dir, "layout.backup-${System.currentTimeMillis()}.json"))
+                File(dir, "home_v2.json").takeIf { it.exists() }?.renameTo(File(dir, "home_v2.backup-${System.currentTimeMillis()}.json"))
             } catch (_: Exception) {
             }
             CrashGuard.leaveSafeMode(this)

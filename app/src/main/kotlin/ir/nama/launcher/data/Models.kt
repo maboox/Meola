@@ -46,17 +46,20 @@ data class Settings(
     val onboarded: Boolean = false,
     val onboardedAt: Long = 0L,
     val language: String = "fa",
-    val style: StyleId = StyleId.PERSIAN,
+    val style: StyleId = StyleId.DEFAULT,
     val persianDigits: Boolean = true,
     val iconShape: IconShape? = null,
-    val iconSizeDp: Int = 52,
+    val iconSizeDp: Int = 54,
     val columns: Int = 4,
+    val rows: Int = 6,
+    /** Single-colour icons tinted with the wallpaper colours (Android 13+ apps that support it). */
+    val themedIcons: Boolean = false,
     val showLabels: Boolean = true,
     val showNotificationDots: Boolean = true,
     val oneHandMode: Boolean = false,
     val reduceMotion: Boolean = false,
     /** Show the phone's own wallpaper behind the style (otherwise the style paints its own background). */
-    val useSystemWallpaper: Boolean = false,
+    val useSystemWallpaper: Boolean = true,
     val interests: Set<String> = emptySet(),
     val persona: String? = null,
     val cityId: String = "tehran",
@@ -99,66 +102,52 @@ data class Settings(
     val newsLastSeen: Long = 0L
 )
 
+/** A folder of apps. When [smartCategory] is set the folder fills itself with that category. */
 @Serializable
-sealed class HomeItem {
-    abstract val id: String
-
-    @Serializable @SerialName("app")
-    data class App(override val id: String, val key: String) : HomeItem()
-
-    /** A folder of apps. When [smartCategory] is set the folder fills itself with that category. */
-    @Serializable @SerialName("folder")
-    data class Folder(
-        override val id: String,
-        val name: String,
-        val keys: List<String> = emptyList(),
-        val smartCategory: AppCategory? = null
-    ) : HomeItem()
-}
+data class FolderData(
+    val name: String,
+    val keys: List<String> = emptyList(),
+    val smartCategory: AppCategory? = null
+)
 
 @Serializable
-enum class WidgetSize { SMALL, WIDE }
-
-@Serializable
-enum class WidgetType(val fa: String, val en: String, val group: String, val defaultSize: WidgetSize = WidgetSize.WIDE) {
+enum class WidgetType(val fa: String, val en: String, val group: String) {
+    GLANCE("یک نگاه", "At a glance", "time"),
     CLOCK("ساعت", "Clock", "time"),
-    CLOCK_WORDS("ساعت نوشتاری", "Clock in words", "time"),
     CALENDAR("تقویم جلالی", "Jalali calendar", "time"),
     TODAY("امروزم", "My day", "time"),
-    COUNTDOWN("شمارش معکوس", "Countdown", "time", WidgetSize.SMALL),
     PRAYER("اوقات شرعی", "Prayer times", "time"),
-    BIRTHDAYS("تولدهای نزدیک", "Birthdays", "time"),
-    PRICES("قیمت ارز و طلا", "Prices", "money"),
+    COUNTDOWN("شمارش معکوس", "Countdown", "time"),
+    BIRTHDAYS("تولدها", "Birthdays", "time"),
+    WEATHER("آب‌وهوا", "Weather", "city"),
+    BLACKOUT("خاموشی برق", "Power cuts", "city"),
+    ODD_EVEN("زوج و فرد", "Odd/even plates", "city"),
+    FOOTBALL("تیم محبوب", "My team", "city"),
+    PRICES("قیمت‌ها", "Prices", "money"),
     BILLS("قسط و قبض", "Bills", "money"),
     BANK_CARDS("کارت‌های بانکی", "Bank cards", "money"),
-    EXPENSES("دخل‌وخرج", "Expenses", "money", WidgetSize.SMALL),
+    EXPENSES("دخل‌وخرج", "Spending", "money"),
+    TODO("کارها", "To-do", "productivity"),
+    SHOPPING("لیست خرید", "Shopping list", "productivity"),
+    NOTES("یادداشت", "Note", "productivity"),
+    HABITS("عادت‌ها", "Habits", "productivity"),
+    POMODORO("پومودورو", "Pomodoro", "productivity"),
+    BATTERY("باتری", "Battery", "phone"),
+    DATA_USAGE("اینترنت همراه", "Mobile data", "phone"),
     USSD("کدهای سیم‌کارت", "SIM codes", "phone"),
-    DATA_USAGE("مصرف اینترنت", "Data usage", "phone", WidgetSize.SMALL),
-    BATTERY("باتری", "Battery", "phone", WidgetSize.SMALL),
-    TOGGLES("میانبرهای سریع", "Quick toggles", "phone"),
-    CONTACTS("مخاطب‌های محبوب", "Favorite contacts", "phone"),
-    MUSIC("پخش موسیقی", "Music", "phone"),
-    WEATHER("آب‌وهوا و آلودگی", "Weather & air", "city", WidgetSize.SMALL),
-    BLACKOUT("خاموشی برق", "Power cuts", "city"),
-    ODD_EVEN("طرح زوج و فرد", "Odd/even plates", "city", WidgetSize.SMALL),
-    FOOTBALL("تیم محبوب", "My team", "city"),
+    TOGGLES("میانبرها", "Shortcuts", "phone"),
+    MUSIC("موسیقی", "Music", "phone"),
+    CONTACTS("مخاطب‌ها", "Contacts", "phone"),
     HAFEZ("فال حافظ", "Hafez", "culture"),
     POEM("شعر روز", "Poem of the day", "culture"),
-    QUOTE("جمله روز", "Quote of the day", "culture", WidgetSize.SMALL),
-    VERSE("آیه روز", "Verse of the day", "culture"),
-    TODO("کارهای روز", "To-do", "productivity"),
-    NOTES("یادداشت سریع", "Quick note", "productivity"),
-    SHOPPING("لیست خرید", "Shopping list", "productivity"),
-    HABITS("عادت‌ها", "Habits", "productivity"),
-    POMODORO("پومودورو", "Pomodoro", "productivity", WidgetSize.SMALL),
-    USAGE("آمار استفاده", "Screen time", "wellbeing", WidgetSize.SMALL),
-    FOCUS("حالت تمرکز", "Focus", "wellbeing", WidgetSize.SMALL),
-    SPACE("فضای فعلی", "Current space", "wellbeing", WidgetSize.SMALL),
-    NOTIF_DIGEST("خلاصه اعلان‌ها", "Notification digest", "wellbeing"),
-    NEWS_TICKER("نوار خبر", "News ticker", "news"),
-    NEWS_DIGEST("خلاصه خبرها", "News digest", "news"),
-    MORNING("کارت صبح‌بخیر", "Good morning card", "news"),
-    SMART_STACK("پشته هوشمند", "Smart stack", "structure"),
+    QUOTE("جمله روز", "Quote", "culture"),
+    VERSE("آیه روز", "Verse", "culture"),
+    NEWS("اخبار", "News", "news"),
+    NOTIF_DIGEST("خلاصه اعلان‌ها", "Notifications", "news"),
+    USAGE("زمان استفاده", "Screen time", "wellbeing"),
+    FOCUS("تمرکز", "Focus", "wellbeing"),
+    SPACE("فضا", "Space", "wellbeing"),
+    SMART_STACK("پشته هوشمند", "Smart stack", "wellbeing"),
     SYSTEM("ویجت برنامه", "App widget", "system")
 }
 
@@ -166,21 +155,36 @@ enum class WidgetType(val fa: String, val en: String, val group: String, val def
 data class WidgetInstance(
     val id: String,
     val type: WidgetType,
-    val size: WidgetSize = type.defaultSize,
     val config: Map<String, String> = emptyMap(),
     /** For [WidgetType.SYSTEM]: the id allocated from the AppWidgetHost. */
     val appWidgetId: Int = -1,
     /** Visible only in these spaces (empty = always). Use "base" for "no space active". */
-    val spaces: Set<String> = emptySet(),
-    val heightDp: Int = 0
+    val spaces: Set<String> = emptySet()
 )
 
+/**
+ * One thing on the home grid. Exactly one of [app], [folder] or [widget] is set.
+ * Position and size are in cells; x counts from the start edge (right in Persian).
+ */
 @Serializable
-data class HomePage(
+data class GridItem(
     val id: String,
-    val widgets: List<WidgetInstance> = emptyList(),
-    val items: List<HomeItem> = emptyList()
-)
+    val x: Int,
+    val y: Int,
+    val w: Int = 1,
+    val h: Int = 1,
+    val app: String? = null,
+    val folder: FolderData? = null,
+    val widget: WidgetInstance? = null
+) {
+    val isApp get() = app != null
+    val isFolder get() = folder != null
+    val isWidget get() = widget != null
+    fun cell() = ir.nama.core.Cell(id, x, y, w, h)
+}
+
+@Serializable
+data class HomePage(val id: String, val items: List<GridItem> = emptyList())
 
 @Serializable
 data class HomeLayout(

@@ -44,6 +44,9 @@ class Section<T>(
     scope: CoroutineScope
 ) {
     private val file = AtomicFile(File(dir, "$name.json"))
+
+    /** False when there was no saved file yet (first run of this data version). */
+    val existedOnLoad: Boolean = file.baseFile.exists()
     private val _flow = MutableStateFlow(load())
     val flow: StateFlow<T> = _flow.asStateFlow()
     val value: T get() = _flow.value
@@ -94,13 +97,14 @@ class Store(context: Context) {
     private val dir = File(context.filesDir, "nama").apply { mkdirs() }
 
     val settings = Section(dir, "settings", Settings.serializer(), { Settings() }, scope)
-    val layout = Section(dir, "layout", HomeLayout.serializer(), { HomeLayout() }, scope)
+    // v2: the grid layout (apps, folders and widgets share one grid).
+    val layout = Section(dir, "home_v2", HomeLayout.serializer(), { HomeLayout() }, scope)
     val spaces = Section(dir, "spaces", ListSerializer(Space.serializer()), { emptyList() }, scope)
     val appPrefs = Section(dir, "app_prefs", MapSerializer(String.serializer(), AppPref.serializer()), { emptyMap() }, scope)
     val appStats = Section(dir, "app_stats", MapSerializer(String.serializer(), AppStats.serializer()), { emptyMap() }, scope)
     val rules = Section(dir, "rules", ListSerializer(SortRule.serializer()), { DefaultRules.all() }, scope)
     val personal = Section(dir, "personal", Personal.serializer(), { Personal() }, scope)
-    val history = Section(dir, "history", ListSerializer(LayoutSnapshot.serializer()), { emptyList() }, scope)
+    val history = Section(dir, "history_v2", ListSerializer(LayoutSnapshot.serializer()), { emptyList() }, scope)
 
     fun flushAll() {
         settings.flushNow(); layout.flushNow(); spaces.flushNow(); appPrefs.flushNow()
