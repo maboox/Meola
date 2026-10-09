@@ -139,6 +139,9 @@ tap_text "ویجت‌ها"; shot 15_widget_picker 3
 adb shell input swipe $((W/2)) $((H*75/100)) $((W/2)) $((H*35/100)) 400
 shot 15b_widget_picker_scrolled 2
 tap_text "افزودن"; shot 16_widget_added 4
+adb shell input swipe $((W*15/100)) $((H/2)) $((W*85/100)) $((H/2)) 300
+shot 16b_widget_page2 3
+adb shell input keyevent KEYCODE_HOME; sleep 2
 # Long press the at-a-glance widget at the top: widget menu with sizes.
 long_press $((W/2)) $((H*14/100))
 shot 17_widget_menu 2
