@@ -18,7 +18,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.absoluteOffset
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -481,13 +481,15 @@ private fun IconGrid(ctrl: HomeController, env: HomeEnv, items: List<HomeItem>, 
         var dragOffset by remember { mutableStateOf(Offset.Zero) }
         var pressedId by remember { mutableStateOf<String?>(null) }
 
-        fun cellX(i: Int): Float { val c = i % cols; return if (rtl) widthPx - (c + 1) * cellW else c * cellW }
+        // Offsets are measured from the layout's start edge (right in RTL); Modifier.offset mirrors them.
+        fun cellX(i: Int): Float = (i % cols) * cellW
         fun cellY(i: Int): Float = (i / cols) * cellH
 
         Box(Modifier.fillMaxWidth().height(with(density) { (rows * cellH).toDp() })) {
             items.forEachIndexed { index, item ->
                 val dragging = dragId == item.id
-                val x = cellX(index) + if (dragging) dragOffset.x else 0f
+                // Drag deltas are in screen pixels (left to right); flip them for RTL.
+                val x = cellX(index) + if (dragging) (if (rtl) -dragOffset.x else dragOffset.x) else 0f
                 val y = cellY(index) + if (dragging) dragOffset.y else 0f
                 val scale by animateFloatAsState(if (dragging || pressedId == item.id) 1.12f else 1f, label = "press")
                 Box(
@@ -495,7 +497,7 @@ private fun IconGrid(ctrl: HomeController, env: HomeEnv, items: List<HomeItem>, 
                         .zIndex(if (dragging) 10f else 0f)
                         .width(with(density) { cellW.toDp() })
                         .height(with(density) { cellH.toDp() })
-                        .offsetAbsolute(x.roundToInt(), y.roundToInt())
+                        .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
                         .onGloballyPositioned { registry.rects[item.id] = it.boundsInWindow() }
                         .pointerInput(item.id, index, items.size) {
                             // One detector for tap, long-press menu and drag, so a long press never also launches.
@@ -543,9 +545,6 @@ private fun IconGrid(ctrl: HomeController, env: HomeEnv, items: List<HomeItem>, 
         }
     }
 }
-
-private fun Modifier.offsetAbsolute(x: Int, y: Int): Modifier =
-    this.absoluteOffset { IntOffset(x, y) }
 
 private fun onTap(ctrl: HomeController, env: HomeEnv, item: HomeItem, pageIndex: Int, view: android.view.View) {
     when (item) {
