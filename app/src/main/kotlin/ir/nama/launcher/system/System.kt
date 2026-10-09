@@ -322,10 +322,10 @@ class LockScreenService : AccessibilityService() {
 
         fun lock(): Boolean {
             val s = instance ?: return false
-            return Build.VERSION.SDK_INT >= 28 && s.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+            return Build.VERSION.SDK_INT >= 28 && s.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
         }
 
-        fun notifications(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS) == true
+        fun notifications(): Boolean = instance?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS) == true
     }
 }
 

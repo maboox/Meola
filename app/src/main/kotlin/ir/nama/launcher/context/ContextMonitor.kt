@@ -200,7 +200,7 @@ class ContextMonitor(private val context: Context, private val store: Store, pri
             val cm = context.getSystemService(ConnectivityManager::class.java)
             val req = NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build()
             val cb = if (Build.VERSION.SDK_INT >= 31) {
-                object : ConnectivityManager.NetworkCallback(FLAG_INCLUDE_LOCATION_INFO) {
+                object : ConnectivityManager.NetworkCallback(ConnectivityManager.NetworkCallback.FLAG_INCLUDE_LOCATION_INFO) {
                     override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
                         val ssid = (caps.transportInfo as? WifiInfo)?.ssid
                         setSsid(ssid)
@@ -276,7 +276,7 @@ class ContextMonitor(private val context: Context, private val store: Store, pri
                             }
                         } catch (_: SecurityException) {
                         }
-                        try { adapter.closeProfileProxy(p, proxy) } catch (_: Exception) {}
+                        try { adapter?.closeProfileProxy(p, proxy) } catch (_: Exception) {}
                     }
                     override fun onServiceDisconnected(p: Int) {}
                 }, profile)

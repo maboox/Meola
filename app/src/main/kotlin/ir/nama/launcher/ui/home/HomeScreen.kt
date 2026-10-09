@@ -17,6 +17,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -514,7 +515,7 @@ private fun IconGrid(ctrl: HomeController, env: HomeEnv, items: List<HomeItem>, 
 }
 
 private fun Modifier.offsetAbsolute(x: Int, y: Int): Modifier =
-    this.then(androidx.compose.foundation.layout.absoluteOffset { IntOffset(x, y) })
+    this.absoluteOffset { IntOffset(x, y) }
 
 private fun onTap(ctrl: HomeController, env: HomeEnv, item: HomeItem, pageIndex: Int, view: android.view.View) {
     when (item) {

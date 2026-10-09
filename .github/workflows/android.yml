@@ -47,7 +47,7 @@ jobs:
           NAMA_KEYSTORE_PASSWORD: ${{ secrets.NAMA_KEYSTORE_PASSWORD }}
           NAMA_KEY_ALIAS: ${{ secrets.NAMA_KEY_ALIAS }}
           NAMA_KEY_PASSWORD: ${{ secrets.NAMA_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease --stacktrace
+        run: ./gradlew :app:assembleRelease
 
       - name: Rename APK
         run: |
