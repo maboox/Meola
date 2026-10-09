@@ -134,7 +134,8 @@ fun ago(at: Long): String {
     }
 }
 
-fun sizeLabel(s: WSize) = num("${s.w}×${s.h}")
+/** "4×2", kept left-to-right so it never flips or wraps in Persian text. */
+fun sizeLabel(s: WSize) = "\u2066" + num("${s.w}×${s.h}") + "\u2069"
 
 // ------------------------------------------------------------------------------------------------
 // App pop-up menu (long press on an app: home, dock, drawer or folder)
@@ -307,7 +308,7 @@ fun SizeChip(sz: WSize, selected: Boolean, onClick: () -> Unit) {
     ) {
         MiniGrid(sz, 4, 14.dp, if (selected) cs.onPrimaryContainer else cs.onSurfaceVariant)
         Spacer(Modifier.width(6.dp))
-        Text(sizeLabel(sz), fontSize = 12.sp, color = if (selected) cs.onPrimaryContainer else cs.onSurface)
+        Text(sizeLabel(sz), fontSize = 12.sp, color = if (selected) cs.onPrimaryContainer else cs.onSurface, maxLines = 1, softWrap = false)
     }
 }
 
@@ -413,7 +414,7 @@ fun WidgetPicker(ctrl: HomeController, onPickSystem: (AppWidgetProviderInfo) -> 
                 Text(tr("ویجت‌ها", "Widgets"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             }
             Text(
-                tr("اندازه را انتخاب کن و «افزودن» را بزن. بعداً با لمس طولانی روی ویجت می‌شود اندازه را عوض کرد.", "Pick a size and tap Add. Long-press a widget later to resize it."),
+                tr("اول اندازه را انتخاب کن. بعداً هم با لمس طولانی روی ویجت می‌شود اندازه‌اش را عوض کرد.", "Pick a size first. Long-press a widget later to resize it."),
                 style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
             )

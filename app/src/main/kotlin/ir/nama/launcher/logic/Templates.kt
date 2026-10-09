@@ -120,7 +120,7 @@ object Templates {
         val feature = featureWidget(persona, interests)
         val favRows = (fav.size + cols - 1) / cols
         if (feature != null && rows - 2 - favRows >= 2) {
-            val size = WidgetCatalog.defaultSize(feature).let { WSize(it.w.coerceAtMost(cols), it.h.coerceAtMost(2)) }
+            val size = WidgetCatalog.sizes(feature).filter { it.h <= 2 && it.w <= cols }.maxByOrNull { it.w * 10 + it.h } ?: WSize(2, 2)
             items += GridItem(id(), 0, 2, size.w, size.h, widget = WidgetInstance(id(), feature))
         }
         fav.forEachIndexed { i, k ->
